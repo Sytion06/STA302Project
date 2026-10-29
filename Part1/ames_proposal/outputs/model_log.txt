@@ -1,0 +1,125 @@
+Original: 2930  Complete: 2928  Excluded: 2 
+
+Call:
+lm(formula = SalePrice ~ LivingC * Building + Lot1000 + Quality + 
+    Age + Basement100 + GarageCars + Neighborhood + SaleYear, 
+    data = clean)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-436752  -14749    -570   13001  273522 
+
+Coefficients:
+                        Estimate Std. Error t value Pr(>|t|)    
+(Intercept)             49003.58    5800.76   8.448  < 2e-16 ***
+LivingC                  4859.82     179.76  27.035  < 2e-16 ***
+Building2fmCon          -9749.25    4278.72  -2.279 0.022767 *  
+BuildingDuplex         -21566.42    3426.41  -6.294 3.56e-10 ***
+BuildingTwnhs          -46392.07    4828.46  -9.608  < 2e-16 ***
+BuildingTwnhsE         -24724.59    3103.82  -7.966 2.34e-15 ***
+Lot1000                   529.34      88.19   6.002 2.19e-09 ***
+Quality                 15672.07     764.88  20.490  < 2e-16 ***
+Age                      -403.74      45.60  -8.853  < 2e-16 ***
+Basement100              2260.39     182.04  12.417  < 2e-16 ***
+GarageCars              10228.56    1110.24   9.213  < 2e-16 ***
+NeighborhoodBlmngtn      9102.80    6984.89   1.303 0.192607    
+NeighborhoodBlueste     13050.53   10891.84   1.198 0.230940    
+NeighborhoodBrDale       7123.01    7661.70   0.930 0.352609    
+NeighborhoodBrkSide      5712.18    3682.19   1.551 0.120940    
+NeighborhoodClearCr     13424.93    5265.37   2.550 0.010834 *  
+NeighborhoodCollgCr      1467.94    3042.72   0.482 0.629528    
+NeighborhoodCrawfor     31790.11    3682.83   8.632  < 2e-16 ***
+NeighborhoodEdwards     -2716.81    2812.76  -0.966 0.334181    
+NeighborhoodGilbert     -9477.62    3522.35  -2.691 0.007171 ** 
+NeighborhoodGreens      31955.89   12095.78   2.642 0.008289 ** 
+NeighborhoodGrnHill    126463.20   22985.66   5.502 4.09e-08 ***
+NeighborhoodIDOTRR      -3711.89    3947.73  -0.940 0.347164    
+NeighborhoodLandmrk     12293.24   32474.96   0.379 0.705054    
+NeighborhoodMeadowV     19649.60    6911.63   2.843 0.004501 ** 
+NeighborhoodMitchel       803.23    3520.19   0.228 0.819525    
+NeighborhoodNoRidge     47677.67    4755.79  10.025  < 2e-16 ***
+NeighborhoodNPkVill     10914.72    7596.96   1.437 0.150906    
+NeighborhoodNridgHt     60941.82    3880.04  15.706  < 2e-16 ***
+NeighborhoodNWAmes      -8869.83    3334.12  -2.660 0.007850 ** 
+NeighborhoodOldTown     -2676.25    3088.29  -0.867 0.386245    
+NeighborhoodSawyer       1809.34    3044.02   0.594 0.552298    
+NeighborhoodSawyerW     -3414.99    3582.13  -0.953 0.340499    
+NeighborhoodSomerst     18331.33    3624.29   5.058 4.50e-07 ***
+NeighborhoodStoneBr     70500.32    5423.93  12.998  < 2e-16 ***
+NeighborhoodSWISU       -2195.54    5148.16  -0.426 0.669797    
+NeighborhoodTimber      15745.18    4509.64   3.491 0.000488 ***
+NeighborhoodVeenker     24473.42    6912.82   3.540 0.000406 ***
+SaleYear2007             -856.66    1782.81  -0.481 0.630900    
+SaleYear2008               66.13    1831.50   0.036 0.971200    
+SaleYear2009               37.85    1824.52   0.021 0.983452    
+SaleYear2010             1484.19    2183.87   0.680 0.496802    
+LivingC:Building2fmCon  -2441.06     820.34  -2.976 0.002948 ** 
+LivingC:BuildingDuplex  -2959.43     673.69  -4.393 1.16e-05 ***
+LivingC:BuildingTwnhs   -3027.58    1147.32  -2.639 0.008364 ** 
+LivingC:BuildingTwnhsE   1182.26     769.14   1.537 0.124372    
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+Residual standard error: 32070 on 2882 degrees of freedom
+Multiple R-squared:  0.8413,	Adjusted R-squared:  0.8388 
+F-statistic: 339.5 on 45 and 2882 DF,  p-value: < 2.2e-16
+
+  Building Estimate        SE     Lower    Upper
+1     1Fam 4859.823  179.7586 4507.3543 5212.291
+2   2fmCon 2418.761  810.5085  829.5261 4007.996
+3   Duplex 1900.389  660.7348  604.8280 3195.949
+4    Twnhs 1832.242 1135.6496 -394.5254 4059.010
+5   TwnhsE 6042.082  768.7905 4534.6470 7549.517
+Analysis of Variance Table
+
+Model 1: SalePrice ~ LivingC + Building + Lot1000 + Quality + Age + Basement100 + 
+    GarageCars + Neighborhood + SaleYear
+Model 2: SalePrice ~ LivingC * Building + Lot1000 + Quality + Age + Basement100 + 
+    GarageCars + Neighborhood + SaleYear
+  Res.Df        RSS Df  Sum of Sq      F    Pr(>F)    
+1   2886 3.0025e+12                                   
+2   2882 2.9647e+12  4 3.7835e+10 9.1951 2.219e-07 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+     Variable    N         Mean           SD      Min          Q1     Median
+1   SalePrice 2928 1.808410e+05 7.988990e+04 12789.00 1.29500e+05 1.6000e+05
+2   Living100 2928 1.499784e+01 5.055220e+00     3.34 1.12600e+01 1.4420e+01
+3     Lot1000 2928 1.014973e+01 7.882300e+00     1.30 7.44075e+00 9.4445e+00
+4     Quality 2928 6.095970e+00 1.410831e+00     1.00 5.00000e+00 6.0000e+00
+5         Age 2928 3.640915e+01 3.028525e+01    -1.00 7.00000e+00 3.4000e+01
+6 Basement100 2928 1.051680e+01 4.406759e+00     0.00 7.93000e+00 9.9000e+00
+7  GarageCars 2928 1.767077e+00 7.605642e-01     0.00 1.00000e+00 2.0000e+00
+           Q3        Max
+1 213500.0000 755000.000
+2     17.4225     56.420
+3     11.5560    215.245
+4      7.0000     10.000
+5     54.0000    136.000
+6     13.0200     61.100
+7      2.0000      5.000
+Largest finite Cook D: 0.5296788 
+Leverage-one cases (undefined standardized diagnostics): 1 
+Negative ages: 1 
+R version 4.6.1 (2026-06-24 ucrt)
+Platform: x86_64-w64-mingw32/x64
+Running under: Windows 11 x64 (build 26300)
+
+Matrix products: default
+  LAPACK version 3.12.1
+
+locale:
+[1] LC_COLLATE=English_Canada.utf8  LC_CTYPE=English_Canada.utf8   
+[3] LC_MONETARY=English_Canada.utf8 LC_NUMERIC=C                   
+[5] LC_TIME=English_Canada.utf8    
+
+time zone: America/Toronto
+tzcode source: internal
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+loaded via a namespace (and not attached):
+ [1] compiler_4.6.1  fastmap_1.2.0   cli_3.6.6       tools_4.6.1    
+ [5] htmltools_0.5.9 otel_0.2.0      yaml_2.3.12     tinytex_0.60   
+ [9] rmarkdown_2.32  knitr_1.52      xfun_0.60       digest_0.6.39  
+[13] rlang_1.3.0     evaluate_1.0.5 
