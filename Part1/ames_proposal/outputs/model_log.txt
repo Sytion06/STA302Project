@@ -58,12 +58,18 @@ LivingC:BuildingDuplex  -2959.43     673.69  -4.393 1.16e-05 ***
 LivingC:BuildingTwnhs   -3027.58    1147.32  -2.639 0.008364 ** 
 LivingC:BuildingTwnhsE   1182.26     769.14   1.537 0.124372    
 ---
-Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
 Residual standard error: 32070 on 2882 degrees of freedom
 Multiple R-squared:  0.8413,	Adjusted R-squared:  0.8388 
 F-statistic: 339.5 on 45 and 2882 DF,  p-value: < 2.2e-16
 
+  Building Estimate        SE     Lower    Upper
+1     1Fam 4859.823  179.7586 4507.3543 5212.291
+2   2fmCon 2418.761  810.5085  829.5261 4007.996
+3   Duplex 1900.389  660.7348  604.8280 3195.949
+4    Twnhs 1832.242 1135.6496 -394.5254 4059.010
+5   TwnhsE 6042.082  768.7905 4534.6470 7549.517
 Analysis of Variance Table
 
 Model 1: SalePrice ~ LivingC + Building + Lot1000 + Quality + Age + Basement100 + 
@@ -74,20 +80,37 @@ Model 2: SalePrice ~ LivingC * Building + Lot1000 + Quality + Age + Basement100 
 1   2886 3.0025e+12                                   
 2   2882 2.9647e+12  4 3.7835e+10 9.1951 2.219e-07 ***
 ---
-Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+     Variable    N         Mean           SD      Min          Q1     Median
+1   SalePrice 2928 1.808410e+05 7.988990e+04 12789.00 1.29500e+05 1.6000e+05
+2   Living100 2928 1.499784e+01 5.055220e+00     3.34 1.12600e+01 1.4420e+01
+3     Lot1000 2928 1.014973e+01 7.882300e+00     1.30 7.44075e+00 9.4445e+00
+4     Quality 2928 6.095970e+00 1.410831e+00     1.00 5.00000e+00 6.0000e+00
+5         Age 2928 3.640915e+01 3.028525e+01    -1.00 7.00000e+00 3.4000e+01
+6 Basement100 2928 1.051680e+01 4.406759e+00     0.00 7.93000e+00 9.9000e+00
+7  GarageCars 2928 1.767077e+00 7.605642e-01     0.00 1.00000e+00 2.0000e+00
+           Q3        Max
+1 213500.0000 755000.000
+2     17.4225     56.420
+3     11.5560    215.245
+4      7.0000     10.000
+5     54.0000    136.000
+6     13.0200     61.100
+7      2.0000      5.000
 Largest finite Cook D: 0.5296788 
 Leverage-one cases (undefined standardized diagnostics): 1 
 Negative ages: 1 
-R version 4.5.0 (2025-04-11)
-Platform: aarch64-apple-darwin20
-Running under: macOS 26.6.2
+R version 4.6.1 (2026-06-24 ucrt)
+Platform: x86_64-w64-mingw32/x64
+Running under: Windows 11 x64 (build 26300)
 
 Matrix products: default
-BLAS:   /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBLAS.dylib 
-LAPACK: /Library/Frameworks/R.framework/Versions/4.5-arm64/Resources/lib/libRlapack.dylib;  LAPACK version 3.12.1
+  LAPACK version 3.12.1
 
 locale:
-[1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+[1] LC_COLLATE=English_Canada.utf8  LC_CTYPE=English_Canada.utf8   
+[3] LC_MONETARY=English_Canada.utf8 LC_NUMERIC=C                   
+[5] LC_TIME=English_Canada.utf8    
 
 time zone: America/Toronto
 tzcode source: internal
@@ -95,12 +118,8 @@ tzcode source: internal
 attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
-other attached packages:
-[1] readr_2.2.0
-
 loaded via a namespace (and not attached):
- [1] crayon_1.5.3     vctrs_0.7.3      cli_3.6.6        knitr_1.52       rlang_1.3.0      xfun_0.60       
- [7] glue_1.8.1       bit_4.6.0        htmltools_0.5.9  hms_1.1.4        rmarkdown_2.32   grid_4.5.0      
-[13] evaluate_1.0.5   tibble_3.3.1     tzdb_0.5.0       fastmap_1.2.0    yaml_2.3.12      lifecycle_1.0.5 
-[19] compiler_4.5.0   pkgconfig_2.0.3  digest_0.6.39    R6_2.6.1         tidyselect_1.2.1 parallel_4.5.0  
-[25] vroom_1.7.1      pillar_1.11.1    magrittr_2.0.5   withr_3.0.3      tools_4.5.0      bit64_4.8.6     
+ [1] compiler_4.6.1  fastmap_1.2.0   cli_3.6.6       tools_4.6.1    
+ [5] htmltools_0.5.9 otel_0.2.0      yaml_2.3.12     tinytex_0.60   
+ [9] rmarkdown_2.32  knitr_1.52      xfun_0.60       digest_0.6.39  
+[13] rlang_1.3.0     evaluate_1.0.5 
