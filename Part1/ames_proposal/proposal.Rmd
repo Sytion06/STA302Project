@@ -208,9 +208,11 @@ knitr::kable(read.csv('outputs/missingness.csv'), row.names=FALSE)
 ```
 
 ## Ethics discussion
-The Ames City Assessor's Office recorded actual property sales. De Cock (2011b) documented their origin and published a codebook that distinguishes partial sales from other transactions. We consider the records trustworthy for studying associations among Ames sales in 2006–2010. The three unusually low prices for large homes illustrate why even a correctly recorded sale may be a poor measure of market value.
+The Ames Housing dataset uses real sales records from the Ames City Assessor’s Office. It is not simulated data. De Cock (2011b) explains where the data came from, and a codebook is provided to explain the variables. This makes the dataset more trustworthy, but it does not mean the data are perfect. For example, one house has a calculated age of -1, and the overall quality score may depend on the assessor's judgment. Also, the data only include houses sold in Ames from 2006 to 2010, so the results may not apply to other places.
 
-The assessor collected records for administrative purposes, and De Cock curated them for teaching. That documented purpose supports our classroom use, but the documentation does not establish what owners were told or whether they consented to secondary use. We therefore cannot verify every aspect of the original collection. Parcel identifiers can connect a sale to a household. We will credit the assessor and curator, avoid linking parcels to owners, and report group estimates. A neighborhood represented by one sale warrants particular care: we will avoid publishing its parcel details or interpreting its coefficient as a community characteristic.
+We also need to consider privacy and consent. The records were originally collected for property assessment, and we cannot confirm whether homeowners agreed to their use in research. Even without names, some property details might be matched with other records. We will not try to identify any owners.
+
+For ownership, the records came from the Assessor's Office and were later published by De Cock. We will acknowledge both and use the dataset only for this project. One neighborhood has only one sale, so we will avoid publishing its parcel details or drawing conclusions about the neighborhood from that sale.
 
 ## Preliminary results
 The preliminary model (Table 2) regresses sale price on nine predictors plus a living area × dwelling type interaction (adjusted R² = 0.839; residual SE = $32,073).
