@@ -208,11 +208,11 @@ knitr::kable(read.csv('outputs/missingness.csv'), row.names=FALSE)
 ```
 
 ## Ethics discussion
-Administrative provenance, a published codebook, and a reproducible cleaning record support traceability and measurement transparency. Trustworthiness nevertheless depends on fitness for purpose: assessor quality ratings are subjective, one computed age is negative, and the released sample contains only sold properties from one city and period. Public availability alone does not establish accuracy or representativeness.
+The Ames Housing dataset uses real sales records from the Ames City Assessor’s Office. It is not simulated data. De Cock (2011) explains where the data came from, and a codebook is provided to explain the variables. This makes the dataset more trustworthy, but it does not mean the data are perfect. For example, one house has a calculated age of -1, and the overall quality score may depend on the assessor's judgment. Also, the data only include houses sold in Ames from 2006 to 2010, so the results may not apply to other places.
 
-The curator obtained the records from the Assessor's Office and publicly released a research dataset. We have not verified individual homeowner consent, so we should not claim that every owner consented to this secondary use. Parcel identifiers can link records to addresses and owners; we retain them only for reproducibility and duplicate checks, do not perform identity linkage, and report aggregate findings. Restrict course-data sharing to the required UofT audience.
+We also need to consider privacy and consent. The records were originally collected for property assessment, and we cannot confirm whether homeowners agreed to their use in research. Even without names, some property details might be matched with other records. We will not try to identify any owners.
 
-Neighborhood coefficients may reflect historical inequalities and omitted amenities. They must not be interpreted as intrinsic community quality or used to justify discriminatory lending or pricing. We will describe associations and uncertainty, avoid causal renovation advice, and acknowledge limited geographic and temporal generalizability. [Replace or connect these concepts to the exact Module 3 terminology before submission.]
+For ownership, the records came from the Assessor's Office and were later published by De Cock. We will acknowledge both and use the dataset only for this project. We will also avoid making unfair judgments about neighborhoods based on differences in house prices.
 
 ## Preliminary results
 The preliminary model (Table 2) regresses sale price on nine predictors plus a living area × dwelling type interaction (adjusted R² = 0.839; residual SE = $32,073).
