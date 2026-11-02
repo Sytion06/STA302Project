@@ -7,17 +7,25 @@ output:
     latex_engine: xelatex
 geometry: margin=0.75in
 fontsize: 10pt
+header-includes:
+  - \usepackage{float}
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE)
+knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE, fig.pos='H')
 # Run from the ames_proposal folder. Base R only; no package installation needed.
 options(stringsAsFactors = FALSE)
 dir.create('outputs', showWarnings = FALSE)
-raw <- read.delim('data/AmesHousing_original.txt', check.names = FALSE,
+# [C] The grader runs this with the CSV files we upload to OneDrive (inside a folder named data/).
+if (file.exists('data/AmesHousing_original.csv')) {
+  raw <- read.csv('data/AmesHousing_original.csv', check.names = FALSE,
                   colClasses = 'character', na.strings = '', strip.white = TRUE)
+} else {
+  raw <- read.delim('data/AmesHousing_original.txt', check.names = FALSE,
+                    colClasses = 'character', na.strings = '', strip.white = TRUE)
+  write.csv(raw, 'data/AmesHousing_original.csv', row.names = FALSE, na = '')
+}
 stopifnot(nrow(raw) == 2930, ncol(raw) == 82)
-write.csv(raw, 'data/AmesHousing_original.csv', row.names = FALSE, na = '')
 num <- function(name) suppressWarnings(as.numeric(raw[[name]]))
 d <- data.frame(PID=raw$PID, SalePrice=num('SalePrice'),
   Living100=num('Gr Liv Area')/100, Building=factor(raw[['Bldg Type']]),
@@ -91,7 +99,11 @@ par(mfrow=c(1,2),mar=c(4.2,4.5,2.4,1),cex=.85)
 cols <- c('#176b87','#ba4a00','#6c3483','#229954','#b7950b')
 plot(clean$Living100*100,clean$SalePrice,pch=16,col=adjustcolor(cols[clean$Building],alpha.f=.45),
  xlab='Above-ground living area (sq ft)',ylab='Sale price (USD)',main='Observed sales')
-legend('topleft',legend=levels(clean$Building),col=cols,pch=16,cex=.7,bty='n')
+for (k in seq_along(levels(clean$Building))) {   # [C] one least-squares line per dwelling type
+ dd <- clean[clean$Building == levels(clean$Building)[k], ]
+ abline(lm(SalePrice ~ I(Living100*100), data=dd), col=cols[k], lwd=2.5)
+}
+legend('topleft',legend=levels(clean$Building),col=cols,lwd=2.5,cex=.7,bty='n')
 plot(slopes$Estimate,seq_len(nrow(slopes)),xlim=range(slopes$Lower,slopes$Upper),yaxt='n',
  xlab='Adjusted price difference per 100 sq ft (USD)',ylab='',pch=19,col=cols,main='Type-specific slopes and 95% CIs')
 axis(2,at=seq_len(nrow(slopes)),labels=slopes$Building,las=1)
@@ -103,6 +115,64 @@ capture.output({cat('Original:',nrow(raw),' Complete:',nrow(clean),' Excluded:',
  cat('Leverage-one cases (undefined standardized diagnostics):',sum(influence$Leverage>1-1e-8),'\n');
  cat('Negative ages:',sum(clean$Age<0),'\n'); print(sessionInfo())},file='outputs/model_log.txt')
 saveRDS(fit,'outputs/preliminary_model.rds')
+
+# ---- [C] Full residual analysis: conditions + residuals vs every predictor (3 plots per row) ----
+r <- resid(fit); yhat <- fitted(fit)
+num_x <- c('Living100','Lot1000','Quality','Age','Basement100','GarageCars')
+xlab_map <- c(Living100='Living area (100 sq ft)', Lot1000='Lot area (1,000 sq ft)',
+              Quality='Overall quality (1-10)', Age='Age at sale (years)',
+              Basement100='Basement area (100 sq ft)', GarageCars='Garage capacity (cars)')
+big <- order(r)[1:3]                       # three most negative residuals
+ptcol <- '#173f5f40'
+png('outputs/residual_grid.png', width=2100, height=3300, res=200)
+par(mfrow=c(5,3), mar=c(4,4,2.2,0.8), cex=.62)
+plot(yhat, clean$SalePrice, pch=16, col=ptcol, xlab='Fitted values (USD)', ylab='Sale price (USD)',
+     main='(a) Response vs fitted'); abline(0, 1, col='red', lwd=2)
+plot(yhat, r, pch=16, col=ptcol, xlab='Fitted values (USD)', ylab='Residuals (USD)',
+     main='(b) Residuals vs fitted'); abline(h=0, col='red', lwd=2)
+lines(lowess(yhat, r), col='orange', lwd=2)
+text(yhat[big], r[big], rownames(clean)[big], pos=2, cex=.8)
+k <- 3
+for (v in num_x) {
+  plot(clean[[v]], r, pch=16, col=ptcol, xlab=xlab_map[[v]], ylab='Residuals (USD)',
+       main=paste0('(', letters[k], ') Residuals vs ', tolower(sub(' \\(.*', '', xlab_map[[v]]))))
+  abline(h=0, col='red', lwd=2); lines(lowess(clean[[v]], r), col='orange', lwd=2); k <- k + 1
+}
+boxplot(r ~ clean$Building, xlab='', ylab='Residuals (USD)', main='(i) Residuals by dwelling type', las=2, cex.axis=.8)
+abline(h=0, col='red')
+boxplot(r ~ clean$Neighborhood, xlab='', ylab='Residuals (USD)', main='(j) Residuals by neighborhood', las=2, cex.axis=.45)
+abline(h=0, col='red')
+boxplot(r ~ clean$SaleYear, xlab='', ylab='Residuals (USD)', main='(k) Residuals by sale year')
+abline(h=0, col='red')
+plot(time, r, pch=16, col=ptcol, xlab='Sale year and month', ylab='Residuals (USD)',
+     main='(l) Residuals vs sale time'); abline(h=0, col='red', lwd=2)
+lines(lowess(time, r), col='orange', lwd=2)
+qqnorm(r, pch=16, col=ptcol, main='(m) Normal Q-Q plot'); qqline(r, col='red', lwd=2)
+plot(hatvalues(fit), rstandard(fit), pch=16, col=ptcol, xlab='Leverage', ylab='Standardized residuals',
+     main='(n) Residuals vs leverage'); abline(h=0, col='red')
+dev.off()
+
+png('outputs/pairs.png', width=2000, height=2000, res=200)
+pairs(setNames(clean[num_x], c('Living area','Lot area','Quality','Age','Basement','Garage')),
+      pch=16, cex=.25, col='#173f5f30')
+dev.off()
+
+# [C] Check the three most negative residuals against the codebook's special notes
+partial_check <- data.frame(Row=rownames(clean)[big], LivingArea_sqft=clean$Living100[big]*100,
+  SalePrice=clean$SalePrice[big], Residual=round(r[big]),
+  SaleCondition=raw[['Sale Condition']][as.integer(rownames(clean)[big])])
+write.csv(partial_check, 'outputs/largest_negative_residuals.csv', row.names=FALSE)
+
+# [C] Readable labels for Table 2
+term_lab <- c('(Intercept)'='Intercept',
+  'LivingC'='Living area (per 100 sq ft, centred at 1,500)',
+  'Building2fmCon'='Type: two-family conversion', 'BuildingDuplex'='Type: duplex',
+  'BuildingTwnhs'='Type: townhouse (interior)', 'BuildingTwnhsE'='Type: townhouse (end unit)',
+  'Lot1000'='Lot area (per 1,000 sq ft)', 'Quality'='Overall quality (per point)',
+  'Age'='Age at sale (per year)', 'Basement100'='Basement area (per 100 sq ft)',
+  'GarageCars'='Garage capacity (per car)',
+  'LivingC:Building2fmCon'='Living area x two-family conversion', 'LivingC:BuildingDuplex'='Living area x duplex',
+  'LivingC:BuildingTwnhs'='Living area x townhouse (interior)', 'LivingC:BuildingTwnhsE'='Living area x townhouse (end unit)')
 
 ```
 
@@ -145,26 +215,35 @@ The curator obtained the records from the Assessor's Office and publicly release
 Neighborhood coefficients may reflect historical inequalities and omitted amenities. They must not be interpreted as intrinsic community quality or used to justify discriminatory lending or pricing. We will describe associations and uncertainty, avoid causal renovation advice, and acknowledge limited geographic and temporal generalizability. [Replace or connect these concepts to the exact Module 3 terminology before submission.]
 
 ## Preliminary results
-The untransformed preliminary model uses nine predictors and the four living-area interaction coefficients (46 coefficients including the intercept). Adjusted R-squared is 0.8388 and residual standard error is $32,073. Table 2 reports every coefficient with its conventional OLS standard error and 95% confidence interval.
+The preliminary model (Table 2) regresses sale price on nine predictors plus a living area × dwelling type interaction (adjusted R² = 0.839; residual SE = $32,073).
 
-For detached homes, 100 additional square feet is associated with $4,860 higher mean price (95% CI $4,507-$5,212), holding the other predictors fixed. Corresponding slopes are $2,419 for converted two-family homes, $1,900 for duplexes, $1,832 for interior townhouses, and $6,042 for end-unit townhouses. The interaction block has F(4,2882)=9.20, p=2.22e-7. These are provisional model-based comparisons; the diagnostics undermine conventional inferential calibration.
+For detached homes, 100 additional square feet is associated with a $4,860 higher mean price (95% CI $4,507–$5,212), holding other predictors fixed. The corresponding slopes are $2,419 for two-family conversions, $1,900 for duplexes, $1,832 for interior townhouses and $6,042 for end-unit townhouses (Figure 2), and the four interaction terms are jointly significant (partial F(4, 2882) = 9.20, p < 0.001).
 
-Figure 1 shows curved residual means and increasing spread at high fitted prices, suggesting imperfect linearity and unequal variance. The scale-location trend reinforces the latter. Strong Q-Q tail departures contradict normal errors, with several extreme negative residuals. Cook's distance reaches 0.530. Landmrk has one property and leverage one; its standardized residual and Cook's distance are undefined and omitted from relevant diagnostic panels. The design matrix is full rank, but this does not imply stable estimates or negligible collinearity. Sale-time residuals show no strong smooth trend; they cannot establish independence, especially with possible neighborhood dependence.
+Figure 3 summarizes pairwise associations among the numeric predictors. At high fitted prices, observed prices bend above the identity line (Figure 1a). Residuals curve against fitted price (Figure 1b), living area (1c), and basement area (1g), suggesting that the model misses some nonlinear structure. Constant variance is violated: residual spread increases with fitted price (Figure 1b). Uncorrelated errors appear reasonable: residuals show no trend over sale time (Figure 1l), though nearby homes may share unmeasured influences. Normality is violated: the Q-Q plot (Figure 1m) shows heavy tails. The three largest negative residuals (rows 1499, 2181 and 2182) are partial sales above 4,000 square feet, which De Cock (2011) flags as unlikely to reflect market value; Landmrk has a single sale (leverage one, Figure 1n). No corrections are applied at this stage.
 
-The positive quality coefficient ($15,672 per rating point) is directionally consistent with Mathur (2019), although scales and populations differ. Age has a negative linear coefficient ($404 per year), while the residual-age plot shows especially large spread among newer properties. This does not reproduce a simple increasing-variance-with-age pattern from Dallas and reinforces the need for local diagnostics. Neighborhood adjustment follows Fik et al. (2003), but cannot establish absence of spatial effects. No transformations, rare-level pooling, or influential-case deletions have been applied.
+The quality coefficient ($15,672 per point) agrees in direction with Mathur (2019), the negative age coefficient (−$404 per year) is consistent with depreciation reported by Goodman and Thibodeau (1995), though our residual spread is largest for newer homes, and large neighborhood effects echo Fik et al. (2003). Unexpectedly, end-unit townhouses have a larger estimated slope than detached homes, but the difference is not significant (95% CI −$326 to $2,690). GrnHill (2 sales) and Landmrk (1) give unstable estimates.
 
-```{r diagnostics, out.width="100%", fig.cap="Figure 1. Preliminary model diagnostics. Curvature, unequal spread, heavy tails, and influential observations warrant investigation. Labels identify original row numbers; the leverage-one case is omitted from standardized panels."}
-knitr::include_graphics('outputs/diagnostics.png')
+```{r residual-grid, out.width="75%", fig.align="center", fig.cap="Residual diagnostics for the preliminary sale-price model. Residuals curve and spread out at higher fitted prices (b), and the normal Q-Q plot shows heavy tails (m). Orange curves show local trends. Labels in (b) identify the three most negative residuals by original data row."}
+knitr::include_graphics('outputs/residual_grid.png')
 ```
 
-```{r interaction, out.width="100%", fig.cap="Figure 2. Observed prices and adjusted living-area slopes by dwelling type. Intervals are conventional 95% OLS intervals; assumption violations limit inference."}
+```{r interaction, out.width="100%", fig.cap="Observed sales with a least-squares line for each dwelling type (left) and adjusted living-area slopes with 95% CIs (right)."}
 knitr::include_graphics('outputs/interaction.png')
 ```
 
-Table 2. Full preliminary model, USD. References: detached home, North Ames (NAmes), 2006. Dwelling-type contrasts are at 1,500 square feet. Interactions are slope differences per 100 square feet. Conventional intervals assume the model conditions hold.
+```{r pairs, out.width="60%", fig.align="center", fig.cap="Pairwise scatterplots of the numerical predictors."}
+knitr::include_graphics('outputs/pairs.png')
+```
+
+Table 2. Preliminary model, USD. References: detached home, North Ames, 2006. Dwelling-type contrasts are at 1,500 sq ft; interactions are slope differences per 100 sq ft. Neighborhood and sale-year effects are included but not shown.
 
 ```{r coefficients, results="asis"}
-knitr::kable(read.csv('outputs/coefficients.csv')[1:5], digits=2, row.names=FALSE, longtable=TRUE)
+cf <- read.csv('outputs/coefficients.csv')
+cf <- cf[cf$Term %in% names(term_lab), ]
+fmt <- function(x) format(round(x), big.mark=',', trim=TRUE)
+tab2 <- data.frame(Term=term_lab[cf$Term], Estimate=fmt(cf$Estimate), SE=fmt(cf$SE),
+                   `95% CI`=paste0('[', fmt(cf$Lower), ', ', fmt(cf$Upper), ']'), check.names=FALSE)
+knitr::kable(tab2, row.names=FALSE, align='lrrr')
 ```
 
 ## Plan
