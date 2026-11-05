@@ -1,6 +1,6 @@
 ---
 title: "Does the value of living space vary by dwelling type?"
-author: "[Team member names]"
+author: "Wenchu Yang, Chenghao Li, Bohao Zhuang, Leo Lu"
 date: "STA302 Part 1 - due November 5, 2026"
 output:
   pdf_document:
@@ -179,7 +179,13 @@ term_lab <- c('(Intercept)'='Intercept',
 **Working draft:** confirm Ames eligibility; replace team placeholders.
 
 ## Contributions
-[Member A]: [actual contribution]. [Member B]: [actual contribution]. [Member C]: [actual contribution]. [Member D]: [actual contribution].
+**Wenchu Yang: ** Developed the analysis plan, including model comparisons, transformations, and diagnostic checks. Also worked on interpreting the preliminary results, formatting references, and integrating the team's sections.
+
+**Chenghao Li: ** Developed the introduction and data description, connecting the literature to the research question and explaining the data source, variable choices, and motivation for the interaction term.
+
+**Bohao Zhuang: ** Developed the preliminary-results section and its R code, including the diagnostic plots, dwelling-type regression lines, and coefficient table, and assessed the model's assumptions and conditions.
+
+**Leo Lu: ** Developed the Ethics discussion, evaluating data trustworthiness, privacy, consent, ownership, and neighborhood interpretation. Also worked on document preparation by updating the proposal PDF and section word counts.
 
 ## Introduction
 Among residential properties sold in Ames, Iowa, during 2006-2010, does the association between above-ground living area and sale price differ by dwelling type, after adjustment for lot area, construction quality, age, basement area, garage capacity, neighborhood, and sale year? Sale price is the recorded transaction amount in nominal US dollars. Rather than assuming a universal price-per-square-foot relationship, we estimate the adjusted sale-price difference associated with 100 additional square feet within each dwelling type. These estimates describe associations, not the causal return from enlarging a home.
@@ -251,7 +257,7 @@ We will retain living area, dwelling type, and their interaction because our que
 
 Figure 1b shows residual spread increasing with fitted price. We will try log price and use a Box–Cox profile to assess whether a log transformation is plausible. If curvature against living area persists (Figure 1c), we will try a squared centered-area term while retaining its linear term. After each refit, we will inspect residuals against fitted values and predictors for curvature and changing spread, the normal Q–Q plot for heavy tails, and residuals in sale order for dependence. We will compare slopes with and without the three flagged partial sales to see how sensitive our answer is to their inclusion. If we select log price, we will express area contrasts as percentage differences.
 
-By November 15, [Members A/C] will complete diagnostics and model comparisons. By November 20, [Members B/D] will check interpretations and finish the poster. All members will rehearse and record by November 25, then verify the files by November 28.
+Wenchu will lead model comparisons and document the reasons for model selection. Bohao will lead assumption checks, multicollinearity and influence diagnostics, and prepare the final figures. Chenghao will develop the poster's motivation, data description, and interpretation of results. Leo will develop the limitations and ethics discussion and coordinate poster layout. After agreeing on the final model, everyone will review the poster and rehearse an eight-minute presentation with equal participation. Wenchu and Bohao will verify the Rmd, while Chenghao and Leo check the submission files and OneDrive access.
 
 ## Bibliography
 De Cock, D. (2011a). *Ames housing* [Data set and codebook]. Journal of Statistics Education. [Data set](https://jse.amstat.org/v19n3/decock/AmesHousing.txt) · [Codebook](https://jse.amstat.org/v19n3/decock/DataDocumentation.txt)

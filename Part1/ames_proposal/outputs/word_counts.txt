@@ -2,5 +2,5 @@ Introduction: 399
 Data description: 260
 Ethics discussion: 194
 Preliminary results: 313
-Plan: 251
+Plan: 299
 Preliminary results including captions: 417
