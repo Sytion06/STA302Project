@@ -1,7 +1,7 @@
 ---
 title: "Does the value of living space vary by dwelling type?"
 author: "Wenchu Yang, Chenghao Li, Bohao Zhuang, Leo Lu"
-date: "STA302 Part 1 - due November 5, 2026"
+date: "STA302 Part 1 - due November 8, 2026"
 output:
   pdf_document:
     latex_engine: xelatex
@@ -176,8 +176,6 @@ term_lab <- c('(Intercept)'='Intercept',
 
 ```
 
-**Working draft:** confirm Ames eligibility; replace team placeholders.
-
 ## Contributions
 **Wenchu Yang: ** Developed the analysis plan, including model comparisons, transformations, and diagnostic checks. Also worked on interpreting the preliminary results, formatting references, and integrating the team's sections.
 
@@ -225,7 +223,7 @@ The preliminary model (Table 2) regresses sale price on nine predictors plus a l
 
 For detached homes, 100 additional square feet is associated with a $4,860 higher mean price (95% CI $4,507–$5,212), holding other predictors fixed. The corresponding slopes are $2,419 for two-family conversions, $1,900 for duplexes, $1,832 for interior townhouses and $6,042 for end-unit townhouses (Figure 2). The preliminary F-test suggests that the area slopes differ across dwelling types (F(4, 2882) = 9.20, p < 0.001). The widening residual spread in Figure 1b makes the p-value and confidence intervals provisional.
 
-Conditional mean response: observed prices bend above the identity line at high fitted prices (Figure 1a), so this holds only partly. Conditional mean predictors: Figure 3 gives mixed evidence for the predictor condition: living and basement areas form distinct bands. Linearity is violated: residuals curve against fitted price (Figure 1b), living area (1c) and basement area (1g). Constant variance is violated: residual spread increases with fitted price (Figure 1b). Uncorrelated errors appear reasonable: residuals show no trend over sale time (Figure 1l), though nearby homes may share unmeasured influences. Normality is violated: the Q-Q plot (Figure 1m) shows heavy tails. The three largest negative residuals (rows 1499, 2181 and 2182) are partial sales above 4,000 square feet, which De Cock (2011b) flags as unlikely to reflect market value; Landmrk has a single sale (leverage one, Figure 1n). No corrections are applied at this stage.
+Conditional mean response: observed prices bend above the identity line at high fitted prices (Figure 1a), so this holds only partly. Conditional mean predictors: Figure 3 gives mixed evidence for the predictor condition: living and basement areas form distinct bands. Linearity is violated: residuals curve against fitted price (Figure 1b), living area (1c) and basement area (1g). Constant variance is violated: residual spread increases with fitted price (Figure 1b). Uncorrelated errors appear reasonable: residuals show no trend over sale time (Figure 1l), though nearby homes may share unmeasured influences. Normality is violated: the Q-Q plot (Figure 1m) shows heavy tails. The three largest negative residuals (rows 1499, 2181 and 2182) are partial sales above 4,000 square feet, which De Cock (2011b) flags as unlikely to reflect market value; Landmrk contains a single sale with leverage one; its standardized residual is undefined, so it is omitted from Figure 1n. No corrections are applied at this stage.
 
 The quality coefficient ($15,672 per point) agrees in direction with Mathur (2019), the negative age coefficient (−$404 per year) is consistent with depreciation reported by Goodman and Thibodeau (1995), though our residual spread is largest for newer homes, and large neighborhood effects echo Fik et al. (2003). Unexpectedly, end-unit townhouses have a larger estimated slope than detached homes, but the difference is not significant (95% CI −$326 to $2,690). GrnHill (2 sales) and Landmrk (1) give unstable estimates.
 
@@ -257,7 +255,7 @@ We will retain living area, dwelling type, and their interaction because our que
 
 Figure 1b shows residual spread increasing with fitted price. We will try log price and use a Box–Cox profile to assess whether a log transformation is plausible. If curvature against living area persists (Figure 1c), we will try a squared centered-area term while retaining its linear term. After each refit, we will inspect residuals against fitted values and predictors for curvature and changing spread, the normal Q–Q plot for heavy tails, and residuals in sale order for dependence. We will compare slopes with and without the three flagged partial sales to see how sensitive our answer is to their inclusion. If we select log price, we will express area contrasts as percentage differences.
 
-Wenchu will lead model comparisons and document the reasons for model selection. Bohao will lead assumption checks, multicollinearity and influence diagnostics, and prepare the final figures. Chenghao will develop the poster's motivation, data description, and interpretation of results. Leo will develop the limitations and ethics discussion and coordinate poster layout. After agreeing on the final model, everyone will review the poster and rehearse an eight-minute presentation with equal participation. Wenchu and Bohao will verify the Rmd, while Chenghao and Leo check the submission files and OneDrive access.
+From November 9, all four members will work in parallel: Wenchu on model comparisons, Bohao on diagnostics and figures, Chenghao on literature and interpretation, and Leo on ethics, limitations, and poster design. Weekly meetings will redistribute tasks to balance workloads. Together, we will finalize analysis by November 20, integrate the poster by November 25, review it by November 27, and rehearse and record with equal speaking time by November 30. Everyone will check code, files, and access before December 2 for submission on December 3.
 
 ## Bibliography
 De Cock, D. (2011a). *Ames housing* [Data set and codebook]. Journal of Statistics Education. [Data set](https://jse.amstat.org/v19n3/decock/AmesHousing.txt) · [Codebook](https://jse.amstat.org/v19n3/decock/DataDocumentation.txt)
