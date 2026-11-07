@@ -16,7 +16,7 @@ knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE, fig.pos='H')
 # Run from the ames_proposal folder. Base R only; no package installation needed.
 options(stringsAsFactors = FALSE)
 dir.create('outputs', showWarnings = FALSE)
-# [C] The grader runs this with the CSV files we upload to OneDrive (inside a folder named data/).
+# .
 if (file.exists('data/AmesHousing_original.csv')) {
   raw <- read.csv('data/AmesHousing_original.csv', check.names = FALSE,
                   colClasses = 'character', na.strings = '', strip.white = TRUE)
@@ -99,7 +99,7 @@ par(mfrow=c(1,2),mar=c(4.2,4.5,2.4,1),cex=.85)
 cols <- c('#176b87','#ba4a00','#6c3483','#229954','#b7950b')
 plot(clean$Living100*100,clean$SalePrice,pch=16,col=adjustcolor(cols[clean$Building],alpha.f=.45),
  xlab='Above-ground living area (sq ft)',ylab='Sale price (USD)',main='Observed sales')
-for (k in seq_along(levels(clean$Building))) {   # [C] one least-squares line per dwelling type
+for (k in seq_along(levels(clean$Building))) {   
  dd <- clean[clean$Building == levels(clean$Building)[k], ]
  abline(lm(SalePrice ~ I(Living100*100), data=dd), col=cols[k], lwd=2.5)
 }
@@ -116,7 +116,6 @@ capture.output({cat('Original:',nrow(raw),' Complete:',nrow(clean),' Excluded:',
  cat('Negative ages:',sum(clean$Age<0),'\n'); print(sessionInfo())},file='outputs/model_log.txt')
 saveRDS(fit,'outputs/preliminary_model.rds')
 
-# ---- [C] Full residual analysis: conditions + residuals vs every predictor (3 plots per row) ----
 r <- resid(fit); yhat <- fitted(fit)
 num_x <- c('Living100','Lot1000','Quality','Age','Basement100','GarageCars')
 xlab_map <- c(Living100='Living area (100 sq ft)', Lot1000='Lot area (1,000 sq ft)',
@@ -157,13 +156,13 @@ pairs(setNames(clean[num_x], c('Living area','Lot area','Quality','Age','Basemen
       pch=16, cex=.25, col='#173f5f30')
 dev.off()
 
-# [C] Check the three most negative residuals against the codebook's special notes
+ 
 partial_check <- data.frame(Row=rownames(clean)[big], LivingArea_sqft=clean$Living100[big]*100,
   SalePrice=clean$SalePrice[big], Residual=round(r[big]),
   SaleCondition=raw[['Sale Condition']][as.integer(rownames(clean)[big])])
 write.csv(partial_check, 'outputs/largest_negative_residuals.csv', row.names=FALSE)
 
-# [C] Readable labels for Table 2
+ 
 term_lab <- c('(Intercept)'='Intercept',
   'LivingC'='Living area (per 100 sq ft, centred at 1,500)',
   'Building2fmCon'='Type: two-family conversion', 'BuildingDuplex'='Type: duplex',
