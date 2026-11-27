@@ -1,0 +1,1169 @@
+---
+title: "Ames housing: a guided regression analysis"
+date: "November 27, 2026"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    fig_crop: false
+    toc: true
+    toc_depth: 2
+    keep_tex: true
+  html_document:
+    toc: true
+    toc_depth: 2
+    code_folding: show
+fontsize: 10pt
+geometry: margin=20mm
+header-includes:
+  - \usepackage{float}
+  - \usepackage{placeins}
+  - \usepackage{fvextra}
+  - \usepackage{etoolbox}
+  - \AtBeginEnvironment{longtable}{\scriptsize}
+  - \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,commandchars=\\\{\}}
+---
+
+# How to read this analysis
+
+The report moves from data to candidate models, diagnostic and sensitivity decisions, final-model results, and limitations. A model is not designated final until these comparisons are complete. Each section asks a question and interprets the table or figure that answers it. The PDF hides the code; the Rmd retains the code beside its explanation for study and editing. Code runs from top to bottom when you knit; no previously exported Part 2 table, figure or model is used as an analytical input. The saved Part 1 model is read only to verify reproduction, not to fit the Part 2 models. The small functions introduced along the way avoid repeating the same calculation across models. File export safeguards appear at the end, outside the modeling discussion.
+
+**AI-assisted starting draft for team review.** This reorganization makes the work easier to study; it does not change its provenance. Module 1, p. 25 restricts AI-produced graded analysis and writing. Permissible use, the Ames dataset-eligibility ambiguity, actual team contributions and any instructor feedback still require team attention.
+
+The primary question is whether the adjusted area-price relationship differs by dwelling type. The final result concerns relative geometric-mean prices, not causal returns from building an addition. All tests and confidence intervals are exploratory and nominal because model selection and residual assumption problems remain.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = !knitr::is_latex_output(), message = FALSE,
+                      fig.width = 7, fig.height = 4.5,
+                      dev = "png", dpi = 180,
+                      fig.path = "analysis_files/worksheet-plots/",
+                      fig.align = "center", out.width = "100%")
+options(stringsAsFactors = FALSE,
+        contrasts = c("contr.treatment", "contr.poly"))
+set.seed(302)
+```
+
+The formatting function in the Rmd labels reduced/full model rows, keeps small p-values readable, and lets long tables continue across PDF pages. It changes presentation only; it does not fit models or alter estimates.
+
+```{r table-format}
+report_table <- function(x, caption, number, digits = 4) {
+  if (inherits(x, "anova")) {
+    x <- data.frame(Model = c("Reduced", "Full"), as.data.frame(x),
+                    check.names = FALSE)
+  }
+  for (column in intersect(c("P", "Pr(>F)"), names(x))) {
+    x[[column]] <- format.pval(x[[column]], digits = 3, eps = 1e-99)
+  }
+  names(x) <- gsub("_", " ", names(x), fixed = TRUE)
+  if (!knitr::is_latex_output()) caption <- paste0("Table ", number, ": ", caption)
+  knitr::kable(x, caption = caption, digits = digits, row.names = FALSE,
+               longtable = knitr::is_latex_output())
+}
+```
+
+# 1. Research question and data
+
+Among residential properties sold in Ames, Iowa, during 2006-2010, does the association between above-ground living area and sale price differ by dwelling type, after adjustment for lot area, construction quality, age, basement area, garage capacity, neighborhood, and sale year? We additionally consider overall condition, as planned in Part 1. The practical motivation is to understand whether a single area-price relationship adequately describes different housing forms in this historical market. This is an associational question, not an estimate of the return from adding rooms or enlarging a property.
+
+Multiple regression allows comparisons within a dwelling type while adjusting for the measured characteristics. A simple correlation or comparison of average prices would mix differences in house size, quality, location, and market timing. Interactions address whether area associations differ by type. Because diagnostics support nonlinear area terms, the candidate question concerns differences in adjusted area-price curves, rather than a single constant slope. The log response makes the reported price contrasts relative differences in conditional geometric means, rather than constant dollar differences in arithmetic means.
+
+Part 1 used Mathur (2019) to motivate quality and condition adjustment, Goodman and Thibodeau (1995) to motivate attention to age and heterogeneous variation, and Fik, Ling and Mulligan (2003) to motivate location adjustment. These are contextual motivations, not direct evidence that a dwelling-type interaction must exist in Ames. Fik et al.'s publisher abstract emphasizes that simple location indicators may not capture all spatial variation. The full Mathur and Goodman papers were not accessible in this session; their substantive summaries are carried forward cautiously from Part 1 and require team verification. We do not repeat the proposal's numerical literature claims as independently verified results.
+
+## Where do the data come from?
+
+The original journal data contain 2,930 records and 82 fields, including two identifiers. They originated in the Ames City Assessor's administrative records and were curated for a regression teaching dataset by De Cock (2011). The source paper describes removing nonresidential properties and keeping the latest transaction for properties sold repeatedly. These are recorded residential sales, not a random sample of all houses or a randomized experiment. The codebook calls the data a population; regression uncertainty here depends on a model for the sales process/errors, not a demonstrated probability-sampling design. Generalization is restricted to comparable historical Ames sales and is especially uncertain for unsold properties, other cities, or current markets. [De Cock (2011)](https://jse.amstat.org/v19n3/decock.pdf)
+
+The original text and CSV versions agree exactly after parsing. PID is imported as text to preserve leading zeros, and both PID and Order are unique. The analysis excludes two records: one missing total basement area and one missing garage capacity. All other baseline model variables and overall condition are complete. This reproduces 2,928 complete cases. The two exclusions have abnormal/allocation sale codes, so complete-case missingness cannot simply be assumed random. Their identifiers and reasons are saved privately in the audit files. No original data or Part 1 file is overwritten.
+
+The codebook supplies units and definitions, supporting interpretability and provenance. It does not establish that every assessed measurement is accurate. Quality and condition are ordinal assessments, not precisely calibrated equal-interval measurements. The raw dwelling codes use `2fmCon`, `Duplex` and `Twnhs`, whereas the documentation prints aliases `2FmCon`, `Duplx` and `TwnhsI`. Their meanings are two-family conversion, duplex, and interior townhouse respectively; raw codes are preserved. Likewise the data use `NAmes` for North Ames although the documentation prints `Names`. We use the recorded levels without silent recoding.
+
+The five dwelling groups contain 2,423 detached homes, 62 conversions, 109 duplexes, 101 interior townhouses, and 233 end-unit townhouses. This imbalance limits curve precision for the smaller groups. Landmrk has one record and GrnHill has two. No arbitrary neighborhood pooling is used. Overall quality has ten observed levels, including only four records at level 1; condition has nine observed levels (1-9), although the codebook scale extends to 10.
+
+## Read the originals and define the variables
+
+We read PID as text to preserve leading zeros. The two source formats must agree. The checks stop knitting if the original data differ from the audited inputs.
+
+```{r read-data}
+input <- "../../Part1/ames_proposal/data/AmesHousing_original.txt"
+raw <- read.delim(input, check.names = FALSE, colClasses = "character",
+                  na.strings = "", strip.white = TRUE)
+original_csv <- read.csv("../../Part1/ames_proposal/data/AmesHousing_original.csv",
+                         check.names = FALSE, colClasses = "character",
+                         na.strings = "")
+input_hash <- tools::md5sum(input)
+stopifnot(identical(raw, original_csv), nrow(raw) == 2930,
+          ncol(raw) == 82, !anyDuplicated(raw$PID), !anyDuplicated(raw$Order))
+```
+
+```{r define-variables}
+# Convert the numerical fields once, then use readable variable names.
+numeric_fields <- c("Order", "SalePrice", "Gr Liv Area", "Lot Area",
+                    "Overall Qual", "Overall Cond", "Yr Sold", "Year Built",
+                    "Total Bsmt SF", "Garage Cars", "Mo Sold")
+housing <- raw
+for (variable in numeric_fields) {
+  housing[[variable]] <- as.numeric(housing[[variable]])
+}
+d <- data.frame(
+  PID = housing$PID, Order = housing$Order, SalePrice = housing$SalePrice,
+  LivingC = (housing[["Gr Liv Area"]] - 1500) / 100,
+  Building = relevel(factor(housing[["Bldg Type"]]), ref = "1Fam"),
+  Lot1000 = housing[["Lot Area"]] / 1000,
+  Quality = housing[["Overall Qual"]], Condition = housing[["Overall Cond"]],
+  Age = housing[["Yr Sold"]] - housing[["Year Built"]],
+  Basement100 = housing[["Total Bsmt SF"]] / 100,
+  GarageCars = housing[["Garage Cars"]],
+  Neighborhood = relevel(factor(housing$Neighborhood), ref = "NAmes"),
+  SaleYear = factor(housing[["Yr Sold"]]), SaleMonth = housing[["Mo Sold"]],
+  SaleCondition = housing[["Sale Condition"]])
+```
+
+`LivingC = 0` represents 1,500 sq ft, and one unit represents 100 sq ft. `Lot1000` and `Basement100` use 1,000 and 100 sq ft units. These rescalings change coefficient units, not the fitted relationships.
+
+```{r complete-cases}
+required <- c("SalePrice", "LivingC", "Building", "Lot1000", "Quality",
+              "Age", "Basement100", "GarageCars", "Neighborhood", "SaleYear")
+included <- complete.cases(d[required])
+cc <- droplevels(d[included, ])
+rownames(cc) <- cc$PID
+cc$QualityF <- relevel(factor(cc$Quality), ref = "5")
+cc$ConditionF <- relevel(factor(cc$Condition), ref = "5")
+stopifnot(nrow(cc) == 2928, !anyNA(cc$Condition), all(cc$SalePrice > 0))
+missingness <- data.frame(Variable = required,
+                         Missing = colSums(is.na(d[required])))
+```
+
+```{r table-missing}
+report_table(missingness, digits = 0,
+             caption = "Missing values in the baseline variables", number = 1)
+```
+
+Table 1 shows why two records are excluded. No additional condition values are missing. The complete-case sample is held fixed during candidate-model comparisons, so a change in fit is not caused by silently changing observations.
+
+```{r area-support}
+support <- data.frame()
+local_counts <- data.frame()
+for (type in levels(cc$Building)) {
+  area <- cc$LivingC[cc$Building == type] * 100 + 1500
+  support <- rbind(support, data.frame(
+    Type = type, N = length(area), Min = min(area),
+    Q1 = unname(quantile(area, .25)), Median = median(area),
+    Q3 = unname(quantile(area, .75)), Max = max(area)))
+  for (start in c(1200, 1500)) {
+    local_counts <- rbind(local_counts, data.frame(
+      Type = type, From = start, To = start + 100,
+      Count = sum(area >= start & area <= start + 100)))
+  }
+}
+```
+
+```{r table-support}
+report_table(support, digits = 1,
+             caption = "Observed living area by dwelling type (sq ft)", number = 2)
+```
+
+```{r table-local}
+report_table(local_counts, digits = 0,
+             caption = "Records in each displayed 100 sq ft interval", number = 3)
+```
+
+Table 2 shows the strong imbalance toward detached homes. The two increments in Table 3 lie within every type's observed range, but only two conversions occur in each interval. Later contrasts borrow information from each fitted group curve; being within range is not proof of dense support or overlap on all controls.
+
+```{r fig-pairs, fig.cap=if (knitr::is_latex_output()) "Relationships among the numerical predictors." else "Figure 1: Relationships among the numerical predictors.", fig.height=6, fig.pos="H"}
+numeric_predictors <- c("LivingC", "Lot1000", "Quality", "Condition",
+                        "Age", "Basement100", "GarageCars")
+pairs(cc[numeric_predictors], pch = 16, cex = .25,
+      col = adjustcolor("steelblue4", alpha.f = .25))
+```
+
+Figure 1 shows structural relationships, especially between living and basement area. Stripes arise naturally from discrete ratings and garage capacity. The predictors need not be independent; their overlap instead affects conditional interpretation and coefficient precision.
+
+# 2. Model development
+
+## Reproduce Part 1 and inspect its assumptions
+
+We first fit the original dollar-price model. The `*` includes area, dwelling type and their interaction. Table 4 checks reproduction against the saved Part 1 model; Figure 2 checks whether its impressive fit summary is sufficient for inference.
+
+```{r baseline-model}
+baseline <- lm(SalePrice ~ LivingC * Building + Lot1000 + Quality + Age +
+                 Basement100 + GarageCars + Neighborhood + SaleYear, data = cc)
+previous <- readRDS("../../Part1/ames_proposal/outputs/preliminary_model.rds")
+coefficient_difference <- max(abs(coef(baseline) -
+                                   coef(previous)[names(coef(baseline))]))
+stopifnot(coefficient_difference < 1e-8)
+baseline_check <- data.frame(
+  N = nobs(baseline), Parameters = baseline$rank,
+  RSE = summary(baseline)$sigma, Adjusted_R2 = summary(baseline)$adj.r.squared,
+  Max_coefficient_difference = coefficient_difference)
+```
+
+```{r table-baseline}
+report_table(baseline_check, digits = 5,
+             caption = "Reproduction of the original dollar-price model", number = 4)
+```
+
+The coefficients match to numerical precision in Table 4. The residual standard error is about $32,073 and adjusted R-squared is 0.839. Neither establishes constant variance, a correct mean structure or normal errors. We use the following short plotting function throughout so every candidate receives the same checks. It uses the familiar `fitted()`, `resid()`, `rstandard()`, `hatvalues()` and base plotting functions.
+
+```{r diagnostic-function}
+diagnostic_plots <- function(model, data) {
+  fitted_values <- fitted(model)
+  residuals <- resid(model)
+  leverage <- hatvalues(model)
+  standardized <- rstandard(model)
+  standardized[leverage > 1 - 1e-8] <- NA
+  old_par <- par(mfrow = c(2, 3), mar = c(4, 4, 2, 1), cex = .8)
+  on.exit(par(old_par))
+
+  plot(fitted_values, model.response(model.frame(model)), pch = 16, cex = .3,
+       xlab = "Fitted response", ylab = "Observed response")
+  abline(0, 1, col = "red")
+  plot(fitted_values, residuals, pch = 16, cex = .3,
+       xlab = "Fitted response", ylab = "Residual")
+  abline(h = 0, col = "red")
+  lines(lowess(fitted_values, residuals), col = "blue", lwd = 2)
+  qqnorm(standardized, pch = 16, cex = .3)
+  qqline(standardized, col = "red")
+  plot(fitted_values, sqrt(abs(standardized)), pch = 16, cex = .3,
+       xlab = "Fitted response", ylab = "sqrt(|standardized residual|)")
+  plot(data$LivingC * 100 + 1500, residuals, pch = 16, cex = .3,
+       xlab = "Living area (sq ft)", ylab = "Residual")
+  abline(h = 0, col = "red")
+  lines(lowess(data$LivingC * 100 + 1500, residuals), col = "blue", lwd = 2)
+  plot(leverage, standardized, pch = 16, cex = .3,
+       xlab = "Leverage", ylab = "Standardized residual")
+  abline(h = c(-4, 4), v = 2 * model$rank / nobs(model), lty = 2)
+}
+```
+
+```{r fig-baseline, fig.cap=if (knitr::is_latex_output()) "Baseline diagnostics on the dollar-price scale." else "Figure 2: Baseline diagnostics on the dollar-price scale.", fig.height=4.5, fig.pos="H"}
+diagnostic_plots(baseline, cc)
+```
+
+Figure 2 shows curvature, widening residual spread and pronounced Q-Q tail departures. Positive residuals mean underprediction and negative residuals mean overprediction. The extreme large-home residuals merit investigation, not automatic deletion. The leverage-one singleton is retained in fitting but omitted from standardized plots because its standardized residual is undefined.
+
+We now build a limited set of candidate models. Their fit, diagnostics and stability will be considered together before selecting the final specification at the end of Section 3.
+
+## Log price, area curvature and condition
+
+We begin with the planned log response. Logging changes the target to relative geometric-mean price comparisons. We cannot rank the raw and log models by their R-squared or residual standard error because their responses have different scales.
+
+```{r log-model}
+log_linear <- lm(log(SalePrice) ~ LivingC * Building + Lot1000 + Quality +
+                   Age + Basement100 + GarageCars + Neighborhood + SaleYear,
+                 data = cc)
+```
+
+```{r fig-log, fig.cap=if (knitr::is_latex_output()) "Diagnostics after changing the response to log price." else "Figure 3: Diagnostics after changing the response to log price.", fig.height=4.5, fig.pos="H"}
+diagnostic_plots(log_linear, cc)
+```
+
+Figure 3 reduces the raw-price funnel, but curvature and tail departures remain. We next allow a common quadratic area term and add overall condition. Each new model retains its lower-order terms.
+
+```{r quadratic-condition}
+log_quadratic <- update(log_linear, . ~ . + I(LivingC^2))
+log_condition <- update(log_quadratic, . ~ . + Condition)
+```
+
+```{r fig-condition, fig.cap=if (knitr::is_latex_output()) "Log-price diagnostics after adding area curvature and condition." else "Figure 4: Log-price diagnostics after adding area curvature and condition.", fig.height=4.5, fig.pos="H"}
+diagnostic_plots(log_condition, cc)
+```
+
+Figure 4 provides the diagnostic context for these extensions. Some structure improves, but the candidate is not assumption-perfect. The following ordinary partial F tests are therefore supporting, exploratory evidence.
+
+```{r table-quadratic-test}
+report_table(anova(log_linear, log_quadratic), digits = 4,
+             caption = "Adding the common area square", number = 5)
+```
+
+```{r table-condition-test}
+report_table(anova(log_quadratic, log_condition), digits = 4,
+             caption = "Adding numerical condition", number = 6)
+```
+
+Table 5 supports a curved area relationship (F about 264); Table 6 shows substantial additional information from condition (F about 645). Each comparison uses the same response and observations. These statistics do not measure causal importance.
+
+## Quality and condition as categories
+
+An ordinal rating need not have equal increments. We replace quality and then condition by factors, both with reference level 5. This costs degrees of freedom and can make estimates in sparse rating groups unstable.
+
+```{r rating-models}
+quality_factor <- update(log_condition, . ~ . - Quality + QualityF)
+common_curvature <- update(quality_factor, . ~ . - Condition + ConditionF)
+```
+
+```{r fig-ratings, fig.cap=if (knitr::is_latex_output()) "Diagnostics with categorical quality and condition." else "Figure 5: Diagnostics with categorical quality and condition.", fig.height=4.5, fig.pos="H"}
+diagnostic_plots(common_curvature, cc)
+```
+
+```{r table-quality-test}
+report_table(anova(log_condition, quality_factor), digits = 4,
+             caption = "Replacing numerical quality with categories", number = 7)
+```
+
+```{r table-rating-test}
+report_table(anova(quality_factor, common_curvature), digits = 4,
+             caption = "Replacing numerical condition with categories", number = 8)
+```
+
+Table 7 and Table 8 support relaxing the equal-increment restrictions, conditional on the remaining assumptions. Figure 5 still shows imperfect tails and spread. A pooled diagnostic can hide group-specific curvature, so we now inspect residuals separately by dwelling type.
+
+```{r by-type-function}
+area_residuals <- function(model, data) {
+  old_par <- par(mfrow = c(2, 3), mar = c(4, 4, 2, 1), cex = .8)
+  on.exit(par(old_par))
+  for (type in levels(data$Building)) {
+    group <- data$Building == type
+    area <- data$LivingC[group] * 100 + 1500
+    errors <- resid(model)[group]
+    plot(area, errors, pch = 16, cex = .4, main = type,
+         xlab = "Living area (sq ft)", ylab = "Log-price residual")
+    abline(h = 0, lty = 2)
+    lines(lowess(area, errors), col = "blue", lwd = 2)
+  }
+}
+```
+
+```{r fig-common-curvature, fig.cap=if (knitr::is_latex_output()) "Residuals by type when quadratic curvature is shared." else "Figure 6: Residuals by type when quadratic curvature is shared.", fig.height=4.5, fig.pos="H"}
+area_residuals(common_curvature, cc)
+```
+
+Figure 6 leaves a clear duplex U shape. A common quadratic coefficient may impose the detached-home pattern on the smaller groups. We therefore add interactions between squared area and dwelling type.
+
+```{r candidate-model}
+candidate <- update(common_curvature, . ~ . + I(LivingC^2):Building)
+stopifnot(candidate$rank == ncol(model.matrix(candidate)), !anyNA(coef(candidate)))
+```
+
+```{r fig-type-curvature, fig.cap=if (knitr::is_latex_output()) "Residuals after allowing each type its own area curvature." else "Figure 7: Residuals after allowing each type its own area curvature.", fig.height=4.5, fig.pos="H"}
+area_residuals(candidate, cc)
+```
+
+```{r table-curvature-test}
+report_table(anova(common_curvature, candidate), digits = 4,
+             caption = "Adding four type-specific quadratic interactions", number = 9)
+```
+
+Figure 7 reduces the duplex U shape; Table 9 provides supporting evidence (F about 16.74). Large detached homes and sparse groups still pose problems. Later, Table 18 will show that this choice changes the duplex percentage estimate materially. We retain the more flexible form as the working model, not a fully validated description everywhere.
+
+## Check the response transformation rather than assuming log is best
+
+Box-Cox profiles a response power while holding the predictor design fixed. Zero denotes log. We explicitly assess both the baseline and candidate designs, then inspect the positive-power alternatives. The profile interval is approximate because powers are evaluated on a grid of 0.01.
+
+```{r boxcox-calculation}
+baseline_power <- MASS::boxcox(baseline, lambda = seq(-.5, 1, .01),
+                               plotit = FALSE, interp = FALSE)
+candidate_dollars <- update(candidate, SalePrice ~ .)
+candidate_power <- MASS::boxcox(candidate_dollars, lambda = seq(-.5, 1, .01),
+                            plotit = FALSE, interp = FALSE)
+power_summary <- data.frame()
+profiles <- list(Baseline = baseline_power, Candidate = candidate_power)
+for (name in names(profiles)) {
+  profile <- profiles[[name]]
+  cutoff <- max(profile$y) - qchisq(.95, 1) / 2
+  interval <- range(profile$x[profile$y >= cutoff])
+  power_summary <- rbind(power_summary, data.frame(
+    Design = name, Power = profile$x[which.max(profile$y)],
+    Lower = interval[1], Upper = interval[2],
+    Log_in_interval = interval[1] <= 0 & interval[2] >= 0))
+}
+```
+
+```{r fig-boxcox, fig.cap=if (knitr::is_latex_output()) "Box-Cox profiles for the baseline and candidate predictor designs." else "Figure 8: Box-Cox profiles for the baseline and candidate predictor designs.", fig.height=3.5, fig.pos="H"}
+par(mfrow = c(1, 2))
+for (name in names(profiles)) {
+  profile <- profiles[[name]]
+  plot(profile$x, profile$y, type = "l", main = name,
+       xlab = "Power (0 = log)", ylab = "Profile log-likelihood")
+  abline(v = 0, lty = 2)
+  abline(h = max(profile$y) - qchisq(.95, 1) / 2, col = "red")
+}
+par(mfrow = c(1, 1))
+```
+
+```{r table-boxcox}
+report_table(power_summary, digits = 2,
+             caption = "Preferred powers and approximate profile intervals", number = 10)
+```
+
+Figure 8 and Table 10 favor 0.25 and 0.15, respectively. Log is outside both intervals. We must not claim Box-Cox selected log. We now fit those alternative powers using the same candidate predictor design.
+
+```{r power-models}
+quarter_power <- update(candidate, I(SalePrice^.25) ~ .)
+profile_power <- update(candidate, I(SalePrice^.15) ~ .)
+```
+
+```{r fig-quarter, fig.cap=if (knitr::is_latex_output()) "Fourth-root response diagnostics; residual units differ from log price." else "Figure 9: Fourth-root response diagnostics; residual units differ from log price.", fig.height=4.5, fig.pos="H"}
+diagnostic_plots(quarter_power, cc)
+```
+
+```{r fig-profile, fig.cap=if (knitr::is_latex_output()) "Diagnostics for the 0.15-power response." else "Figure 10: Diagnostics for the 0.15-power response.", fig.height=4.5, fig.pos="H"}
+diagnostic_plots(profile_power, cc)
+```
+
+Figure 9 and Figure 10 retain heavy tails and uneven spread. Log remains an interpretable working scale for relative prices, not the likelihood-preferred transformation or a cure for all violations. This tradeoff is a team-review decision.
+
+## Why use manual model building?
+
+Forward, backward, stepwise and all-subsets selection are taught, but our small, scientifically motivated sequence makes manual comparisons practical and preserves the research target. An automated fit criterion may favor dropping a control or a grouped interaction without regard to the question, category meaning, or interpretability. It could also encourage selecting favorable results from many models. These are ethical and scientific reasons, not merely computational convenience. Manual selection has its own researcher discretion: we observed these data while deciding on transformations and factor coding. The reported intervals and p-values condition on the chosen model and ignore that selection uncertainty. They should be called exploratory/model-based, not pre-specified confirmatory evidence. A new comparable dataset with a frozen specification would be a stronger follow-up.
+
+# 3. Diagnostics, sensitivity and model selection
+
+The most flexible candidate so far has type-specific linear and quadratic area terms, the planned controls, and categorical quality and condition. Reference categories are detached homes, North Ames, 2006, quality 5 and condition 5. It estimates 67 coefficients from 2,928 records, leaving 2,861 residual degrees of freedom.
+
+```{r fig-candidate, fig.cap=if (knitr::is_latex_output()) "Candidate log-price model: mean structure, spread, tails and leverage." else "Figure 11: Candidate log-price model: mean structure, spread, tails and leverage.", fig.height=4.5, fig.pos="H"}
+diagnostic_plots(candidate, cc)
+```
+
+Figure 11 shows a more regular central relationship than Figure 2, but nonconstant variance, heavy tails and large-area residual curvature remain. Conventional F tests and t intervals may be miscalibrated. These limitations accompany the numerical results below.
+
+```{r fig-predictors, fig.cap=if (knitr::is_latex_output()) "Candidate residuals against numerical predictors and sale time." else "Figure 12: Candidate residuals against numerical predictors and sale time.", fig.height=6, fig.pos="H"}
+par(mfrow = c(3, 3), mar = c(4, 4, 2, 1), cex = .75)
+for (variable in numeric_predictors) {
+  plot(cc[[variable]], resid(candidate), pch = 16, cex = .3,
+       xlab = variable, ylab = "Log-price residual")
+  abline(h = 0, col = "red")
+  lines(lowess(cc[[variable]], resid(candidate)), col = "blue")
+}
+sale_time <- as.numeric(as.character(cc$SaleYear)) + (cc$SaleMonth - 1) / 12
+plot(sale_time, resid(candidate), pch = 16, cex = .3,
+     xlab = "Sale year and month", ylab = "Log-price residual")
+abline(h = 0, col = "red")
+sale_order <- order(sale_time, cc$Order)
+plot(resid(candidate)[sale_order], type = "l", xlab = "Sale order (ties by Order)",
+     ylab = "Log-price residual")
+abline(h = 0, col = "red")
+par(mfrow = c(1, 1))
+```
+
+Figure 12 identifies remaining upper-range structure in area and some other continuous predictors. Bands for ratings and garage capacity are expected. No broad time trend is evident, but unique parcels and flat-looking time plots do not establish independent errors. Exact within-month ordering is unknown; spatial and shared market influences may remain.
+
+```{r fig-groups, fig.cap=if (knitr::is_latex_output()) "Candidate residual distributions by categorical variables." else "Figure 13: Candidate residual distributions by categorical variables.", fig.height=5.5, fig.pos="H"}
+par(mfrow = c(2, 2), mar = c(7, 4, 2, 1), cex = .75)
+for (variable in c("Building", "Neighborhood", "SaleYear", "SaleCondition")) {
+  boxplot(resid(candidate) ~ cc[[variable]], las = 2,
+          cex.axis = if (variable == "Neighborhood") .45 else .7,
+          main = variable, xlab = "", ylab = "Log-price residual")
+  abline(h = 0, col = "red")
+}
+par(mfrow = c(1, 1))
+```
+
+Figure 13 shows differences in spread and tails, including by sale condition. Centering within included factor groups is partly a consequence of least squares, not independent validation. Sparse neighborhoods have little residual information.
+
+## Multicollinearity
+
+For each numerical design column, regress it on all remaining columns. VIF is $1/(1-R_j^2)$. Including all design columns makes this conditional on factors and interactions too; the table is not a generalized VIF for whole categorical variables.
+
+```{r vif}
+X <- model.matrix(candidate)
+numeric_columns <- c("LivingC", "Lot1000", "Age", "Basement100",
+                     "GarageCars", "I(LivingC^2)")
+vifs <- data.frame()
+for (variable in numeric_columns) {
+  column <- match(variable, colnames(X))
+  auxiliary <- lm.fit(X[, -column, drop = FALSE], X[, column])
+  R2 <- 1 - sum(auxiliary$residuals^2) /
+    sum((X[, column] - mean(X[, column]))^2)
+  vifs <- rbind(vifs, data.frame(Term = variable, VIF = 1 / (1 - R2)))
+}
+```
+
+```{r table-vif}
+report_table(vifs, digits = 2,
+             caption = "Numerical-column VIFs conditional on the full design", number = 11)
+```
+
+Table 11 flags age (6.19) under the course threshold of 5. We retain the planned control rather than changing the adjustment question to reduce VIF. Its isolated coefficient deserves caution; full rank rules out exact redundancy but does not remove uncertainty from overlap or sparse categories.
+
+## Outliers, leverage and influence
+
+Following Worksheet 8, we use built-in diagnostics and the course cutoffs. Here `k` includes the intercept. A flag prompts investigation, not deletion. Leverage-one diagnostics are explicitly marked missing.
+
+```{r influence}
+n <- nobs(candidate)
+k <- candidate$rank
+leverage <- hatvalues(candidate)
+standardized <- rstandard(candidate)
+cook <- cooks.distance(candidate)
+fits_change <- dffits(candidate)
+coefficient_change <- dfbetas(candidate)
+undefined <- leverage > 1 - 1e-8
+standardized[undefined] <- NA
+cook[undefined] <- NA
+fits_change[undefined] <- NA
+coefficient_change[undefined, ] <- NA
+max_coefficient_change <- apply(abs(coefficient_change), 1, max)
+diagnostic_counts <- data.frame(
+  Measure = c("Leverage", "Absolute standardized residual", "Cook distance",
+              "Absolute DFFITS", "Any absolute DFBETAS", "Undefined"),
+  Cutoff = c(2*k/n, 4, qf(.5, k, n-k), 2*sqrt(k/n), 2/sqrt(n), NA),
+  Count = c(sum(leverage > 2*k/n), sum(abs(standardized) > 4, na.rm = TRUE),
+            sum(cook > qf(.5, k, n-k), na.rm = TRUE),
+            sum(abs(fits_change) > 2*sqrt(k/n), na.rm = TRUE),
+            sum(max_coefficient_change > 2/sqrt(n), na.rm = TRUE),
+            sum(undefined)))
+```
+
+```{r table-diagnostics}
+report_table(diagnostic_counts, digits = 4,
+             caption = "Course screening thresholds and flagged record counts", number = 12)
+```
+
+Table 12 reports 237 high-leverage records, 21 outliers, one Cook flag, 155 DFFITS flags and 1,405 records with at least one DFBETAS flag. The counts overlap and the last measure scans many coefficients. They are not counts of invalid transactions. The sensitivity analyses below investigate the largest-Cook cases. Landmrk has one observation with leverage one: its own neighborhood coefficient fits it exactly, so standardized/deleted diagnostics provide no residual information.
+
+## Can basement and garage be removed together?
+
+```{r drop-controls}
+without_controls <- update(candidate, . ~ . - Basement100 - GarageCars)
+```
+
+```{r fig-drop-controls, fig.cap=if (knitr::is_latex_output()) "Restricted model excluding basement area and garage capacity." else "Figure 14: Restricted model excluding basement area and garage capacity.", fig.height=4.5, fig.pos="H"}
+diagnostic_plots(without_controls, cc)
+```
+
+```{r table-controls}
+report_table(anova(without_controls, candidate), digits = 4,
+             caption = "Joint removal of basement area and garage capacity", number = 13)
+```
+
+Figure 14 does not offer a diagnostic cure. Table 13 shows substantial loss of fit on removing the two controls jointly (F about 221.76). We retain both as planned adjustment variables; the joint test is not a separate test of each coefficient.
+
+## Diagnose the common-curve comparison model
+
+The null hypothesis sets the four linear and four quadratic area-by-type interactions to zero. Types may still have different price levels. We fit that restricted model on the same records and inspect it before the joint research-question test reported in Section 4. This restricted model is a reference for inference, not a reason to remove the research interaction merely to reduce the parameter count.
+
+```{r common-area-model}
+common_area <- update(candidate, . ~ . - LivingC:Building - I(LivingC^2):Building)
+```
+
+```{r fig-common-area, fig.cap=if (knitr::is_latex_output()) "Restricted model under a common area curve." else "Figure 15: Restricted model under a common area curve.", fig.height=4.5, fig.pos="H"}
+diagnostic_plots(common_area, cc)
+```
+
+Figure 15 retains diagnostic problems. Its aggregate appearance cannot rule out differences masked by the large detached group. The full model also remains imperfect, so later inference remains nominal.
+
+## Define comparable area contrasts for stability checks
+
+For a given type, write the area contribution as $\beta_b L + \gamma_b L^2$, with $L=(a-1500)/100$. Moving from $a$ to $a+100$ changes fitted log price by $\Delta_b=\beta_b+\gamma_b(2L+1)$. The percentage contrast is $100[\exp(\Delta_b)-1]$.
+
+The function in the Rmd implements that formula explicitly. A weight vector selects the relevant linear and quadratic coefficients. Its covariance calculation, $L^T\operatorname{Var}(\hat\beta)L$, is necessary because the coefficient estimates are correlated. We use loops rather than nested anonymous functions so each step is visible.
+
+```{r contrast-functions}
+area_weights <- function(model, type, start) {
+  weights <- setNames(rep(0, length(coef(model))), names(coef(model)))
+  square_change <- 2 * (start - 1500) / 100 + 1
+  weights["LivingC"] <- 1
+  weights["I(LivingC^2)"] <- square_change
+  if (type != "1Fam") {
+    linear_name <- paste0("LivingC:Building", type)
+    square_names <- c(paste0("Building", type, ":I(LivingC^2)"),
+                      paste0("I(LivingC^2):Building", type))
+    weights[linear_name] <- 1
+    square_name <- intersect(square_names, names(coef(model)))
+    if (length(square_name) == 1) weights[square_name] <- square_change
+  }
+  weights
+}
+
+contrast_interval <- function(model, weights) {
+  estimate <- sum(weights * coef(model))
+  se <- sqrt(drop(t(weights) %*% vcov(model) %*% weights))
+  critical <- qt(.975, df.residual(model))
+  lower <- estimate - critical * se
+  upper <- estimate + critical * se
+  data.frame(LogDifference = estimate, SE = se, LowerLog = lower, UpperLog = upper,
+             Percent = 100 * expm1(estimate),
+             LowerPercent = 100 * expm1(lower), UpperPercent = 100 * expm1(upper))
+}
+
+area_contrasts <- function(model, data, label) {
+  result <- data.frame()
+  for (type in levels(data$Building)) {
+    observed <- data$LivingC[data$Building == type] * 100 + 1500
+    for (start in c(1200, 1500)) {
+      stopifnot(start >= min(observed), start + 100 <= max(observed))
+      weights <- area_weights(model, type, start)
+      result <- rbind(result, data.frame(
+        Model = label, Building = type, From_sqft = start, To_sqft = start + 100,
+        contrast_interval(model, weights)))
+    }
+  }
+  result
+}
+area_results <- area_contrasts(candidate, cc, "Primary")
+```
+
+## Partial sales, negative age and sparse neighborhoods
+
+The codebook flags three extremely large incomplete-home sales. Their transaction codes support a targeted sensitivity analysis; they do not justify removing every Partial sale or every large home. One also has recorded age -1. Without independent verification, age zero is a scenario, not a correction. We also investigate the singleton Landmrk category and the two-record GrnHill category.
+
+```{r sensitivity-samples}
+flagged <- cc$PID[cc$LivingC > 25 & cc$SaleCondition == "Partial"]
+stopifnot(length(flagged) == 3)
+samples <- list(
+  Primary = cc,
+  Without_three_partial = droplevels(cc[!cc$PID %in% flagged, ]),
+  Without_singleton = droplevels(cc[cc$Neighborhood != "Landmrk", ]),
+  Without_negative_age = droplevels(cc[cc$Age >= 0, ]),
+  Without_GrnHill = droplevels(cc[cc$Neighborhood != "GrnHill", ]))
+samples$Age_zero_scenario <- cc
+samples$Age_zero_scenario$Age[samples$Age_zero_scenario$Age < 0] <- 0
+sensitivity_models <- list()
+sensitivity_tests <- data.frame()
+sensitivity_contrasts <- data.frame()
+for (name in names(samples)) {
+  data <- samples[[name]]
+  model <- lm(formula(candidate), data = data)
+  reduced <- update(model, . ~ . - LivingC:Building - I(LivingC^2):Building)
+  test <- anova(reduced, model)
+  sensitivity_models[[name]] <- model
+  sensitivity_tests <- rbind(sensitivity_tests, data.frame(
+    Sample = name, N = nobs(model), df1 = test$Df[2], df2 = df.residual(model),
+    F = test$F[2], P = test$"Pr(>F)"[2]))
+  sensitivity_contrasts <- rbind(sensitivity_contrasts,
+                                area_contrasts(model, data, name))
+}
+```
+
+```{r fig-partial-diagnostics, fig.cap=if (knitr::is_latex_output()) "Log-price diagnostics excluding the three flagged partial sales." else "Figure 16: Log-price diagnostics excluding the three flagged partial sales.", fig.height=4.5, fig.pos="H"}
+diagnostic_plots(sensitivity_models$Without_three_partial,
+                 samples$Without_three_partial)
+```
+
+```{r table-sensitivity}
+report_table(sensitivity_tests, digits = 4,
+             caption = "Joint interaction tests within each sensitivity sample", number = 14)
+```
+
+Figure 16 reduces the extreme-area pattern, but does not erase variance and tail problems. Table 14 shows that the broad evidence of differing area curves persists in all listed scenarios. Each F test compares nested models within its own sample; it does not compare models fitted to different samples. Excluding flagged transactions changes the target population.
+
+```{r fig-partial-contrasts, fig.cap=if (knitr::is_latex_output()) "The same percentage contrasts with and without three flagged partial sales." else "Figure 17: The same percentage contrasts with and without three flagged partial sales.", fig.height=4, fig.pos="H"}
+comparison <- subset(sensitivity_contrasts,
+                     From_sqft == 1500 &
+                     Model %in% c("Primary", "Without_three_partial"))
+par(mar = c(5, 7, 2, 1))
+plot(NA, xlim = range(0, comparison$LowerPercent, comparison$UpperPercent),
+     ylim = c(.5, 5.5), yaxt = "n", ylab = "",
+     xlab = "Adjusted geometric-mean price difference (%)")
+axis(2, 1:5, levels(cc$Building), las = 1)
+for (i in 1:2) {
+  name <- c("Primary", "Without_three_partial")[i]
+  values <- subset(comparison, Model == name)
+  y <- (1:5) + c(-.08, .08)[i]
+  colour <- c("steelblue4", "orange3")[i]
+  points(values$Percent, y, pch = c(19, 17)[i], col = colour)
+  segments(values$LowerPercent, y, values$UpperPercent, y, col = colour)
+}
+legend("bottomright", c("Primary", "Without three flagged sales"),
+       col = c("steelblue4", "orange3"), pch = c(19, 17), bty = "n")
+```
+
+Figure 17 shows modest changes around 1,500 sq ft, including detached homes from about 3.45% to 3.27% and duplexes from 0.79% to 0.71%. This stability concerns these three exclusions only; the influential-townhouse check below is a different question.
+
+```{r singleton-check}
+without_singleton <- sensitivity_models$Without_singleton
+shared <- intersect(names(coef(candidate)), names(coef(without_singleton)))
+singleton_check <- data.frame(
+  Max_coefficient_difference = max(abs(coef(candidate)[shared] -
+                                        coef(without_singleton)[shared])),
+  RSS_difference = deviance(candidate) - deviance(without_singleton),
+  Residual_df_difference = df.residual(candidate) - df.residual(without_singleton))
+```
+
+```{r table-singleton}
+report_table(singleton_check, digits = 14,
+             caption = "Removing the singleton record and its unused neighborhood category", number = 15)
+```
+
+Table 15 contains numerical-rounding differences only. Removing one observation and one parameter leaves the same residual degrees of freedom. The singleton contributes no information about the shared area terms, and its exact fit is not evidence of predictive accuracy.
+
+## Influential observations: global and local conclusions can differ
+
+We delete each of the three largest finite Cook-distance cases separately as a sensitivity exercise. These observations remain in the primary model. The largest-Cook case is a 3,005 sq ft interior townhouse recorded as a normal sale; a diagnostic flag alone does not establish an error.
+
+```{r case-deletions}
+top_ids <- cc$PID[order(cook, decreasing = TRUE, na.last = NA)[1:3]]
+deletion_tests <- data.frame()
+deletion_contrasts <- data.frame()
+for (i in seq_along(top_ids)) {
+  data <- droplevels(cc[cc$PID != top_ids[i], ])
+  model <- lm(formula(candidate), data = data)
+  reduced <- update(model, . ~ . - LivingC:Building - I(LivingC^2):Building)
+  test <- anova(reduced, model)
+  label <- paste("Delete Cook rank", i)
+  deletion_tests <- rbind(deletion_tests, data.frame(
+    Scenario = label, N = nobs(model), df1 = test$Df[2],
+    df2 = df.residual(model), F = test$F[2], P = test$"Pr(>F)"[2]))
+  deletion_contrasts <- rbind(deletion_contrasts, area_contrasts(model, data, label))
+}
+```
+
+```{r table-deletions}
+report_table(deletion_tests, digits = 4,
+             caption = "Delete-one sensitivity of the global interaction test", number = 16)
+```
+
+```{r townhouse-comparison}
+townhouse_comparison <- rbind(
+  subset(area_results, Building == "Twnhs" & From_sqft == 1500),
+  subset(deletion_contrasts, Building == "Twnhs" & From_sqft == 1500))
+```
+
+```{r table-townhouse}
+report_table(townhouse_comparison[c("Model", "Percent", "LowerPercent", "UpperPercent")], digits = 2,
+             caption = "Interior-townhouse contrast at 1,500 to 1,600 sq ft under case deletion", number = 17)
+```
+
+Table 16 retains strong global interaction evidence, but Table 17 shows the main local instability: deleting the largest-Cook case moves the townhouse estimate from +1.97% to -0.93%, with an interval spanning zero. A robust global conclusion does not make every group estimate robust. We retain the case because no independent evidence of invalidity was found.
+
+## Specification sensitivity
+
+Compare the same log-price contrast under the common-curvature, numerical-rating and dropped-control specifications. This is a comparison of estimates, not an F test across different responses.
+
+```{r specification-contrasts}
+specification_results <- rbind(
+  area_results,
+  area_contrasts(common_curvature, cc, "Common curvature"),
+  area_contrasts(log_condition, cc, "Numeric ratings"),
+  area_contrasts(without_controls, cc, "Without basement/garage"))
+duplex_specification <- subset(specification_results,
+                             Building == "Duplex" & From_sqft == 1500)
+```
+
+```{r table-specification}
+report_table(duplex_specification[c("Model", "Percent", "LowerPercent", "UpperPercent")], digits = 2,
+             caption = "Duplex contrast at 1,500 to 1,600 sq ft across log-model specifications", number = 18)
+```
+
+Table 18 documents why the curvature decision matters: common curvature gives about 2.15%, compared with 0.79% in the working model. The residual evidence in Figure 6 and Figure 7 informed this choice; we did not select the largest effect.
+
+```{r alternative-tests}
+alternative_models <- list(
+  Raw_baseline = baseline, Log_linear = log_linear,
+  Log_quadratic = log_quadratic, Numeric_condition = log_condition,
+  Quality_factor = quality_factor, Common_curvature = common_curvature,
+  Candidate = candidate, Quarter_power = quarter_power, Profile_power = profile_power)
+alternative_tests <- data.frame()
+for (name in names(alternative_models)) {
+  model <- alternative_models[[name]]
+  reduced <- update(model, . ~ . - LivingC:Building - I(LivingC^2):Building,
+                    data = cc)
+  test <- anova(reduced, model)
+  alternative_tests <- rbind(alternative_tests, data.frame(
+    Model = name, df1 = test$Df[2], df2 = df.residual(model),
+    F = test$F[2], P = test$"Pr(>F)"[2]))
+}
+```
+
+```{r table-alternatives}
+report_table(alternative_tests, digits = 4,
+             caption = "Interaction tests within each candidate response and specification", number = 19)
+```
+
+Table 19 shows qualitative agreement that area associations differ. The positive-power responses define different estimands, so their small p-values do not independently validate the log-price percentages. F statistics with different restrictions and responses are not effect-size rankings.
+
+## Does the extra complexity earn its place?
+
+We assess parsimony on the same 2,928 observations and the same log-price response. AIC penalizes additional parameters; lower is preferred within this comparison. Adjusted R-squared also accounts for parameter count, but neither measure establishes out-of-sample performance. We do not compare unadjusted AIC across raw, log and power responses. The transformation decision instead uses the Box-Cox evidence, residual plots and the intended relative-price interpretation.
+
+The earlier numerical-rating model also imposed shared curvature. To separate rating complexity from curve complexity, we additionally fit two simpler candidates that retain type-specific curves: numerical quality and condition, and categorical quality with numerical condition. Figures 18 and 19 check these candidates before the fit comparison. These focused checks address parsimony; they are not an exhaustive search over many subsets.
+
+```{r simpler-rating-candidates}
+numeric_flexible <- update(candidate, . ~ . - QualityF - ConditionF + Quality + Condition)
+condition_numeric_flexible <- update(candidate, . ~ . - ConditionF + Condition)
+```
+
+```{r fig-numeric-flexible, fig.cap=if (knitr::is_latex_output()) "Type-specific curves with numerical quality and condition." else "Figure 18: Type-specific curves with numerical quality and condition.", fig.height=4.5, fig.pos="H"}
+diagnostic_plots(numeric_flexible, cc)
+```
+
+```{r fig-condition-numeric, fig.cap=if (knitr::is_latex_output()) "Type-specific curves with categorical quality and numerical condition." else "Figure 19: Type-specific curves with categorical quality and numerical condition.", fig.height=4.5, fig.pos="H"}
+diagnostic_plots(condition_numeric_flexible, cc)
+```
+
+```{r complexity-comparison}
+log_candidates <- list(
+  "Linear area, numeric quality" = log_linear,
+  "Common square, numeric quality" = log_quadratic,
+  "Common square, numeric ratings" = log_condition,
+  "Common square, categorical quality" = quality_factor,
+  "Common square, categorical ratings" = common_curvature,
+  "Type curves, numeric ratings" = numeric_flexible,
+  "Type curves, numeric condition" = condition_numeric_flexible,
+  "Type curves, categorical ratings" = candidate,
+  "Type curves, no basement/garage" = without_controls)
+complexity_comparison <- data.frame()
+for (name in names(log_candidates)) {
+  model <- log_candidates[[name]]
+  stopifnot(identical(rownames(model.frame(model)), rownames(cc)),
+            isTRUE(all.equal(as.numeric(model.response(model.frame(model))), log(cc$SalePrice))))
+  complexity_comparison <- rbind(complexity_comparison, data.frame(
+    Model = name, Parameters = model$rank, AIC = AIC(model),
+    Adjusted_R2 = summary(model)$adj.r.squared))
+}
+complexity_comparison$Delta_AIC <- complexity_comparison$AIC - min(complexity_comparison$AIC)
+```
+
+```{r table-complexity}
+report_table(complexity_comparison, digits = 3,
+             caption = "Fit and complexity of log-price candidates on the same sample", number = 20)
+```
+
+Table 20 favors the 67-coefficient type-curve model with categorical ratings among these log-price candidates. Its AIC is about 59.74 below the 63-coefficient shared-curvature model, 15.36 below the 60-coefficient numerical-condition alternative, and 151.42 below the 52-coefficient numerical-ratings alternative. The additional terms therefore improve fit beyond AIC's parameter penalty. Figures 18 and 19 do not show an assumption cure from simplifying the ratings. These are supporting comparisons under an imperfect likelihood, not proof that overfitting is absent.
+
+The 67 coefficients comprise the intercept (1), dwelling indicators (4), area terms (2), area-by-type interactions (8), other numerical controls (4), quality indicators (9), condition indicators (8), neighborhood indicators (27), and sale-year indicators (4). Having 2,861 residual degrees of freedom is reassuring only at the aggregate level. Sparse categories and the influential townhouse show that local precision and stability remain limited. We do not add higher polynomial degrees, selectively keep only significant interactions, or delete valid sales to improve the fit statistic.
+
+## Selection decision after all comparisons
+
+For the stated exploratory question about relative prices, we retain the log-price model with type-specific quadratic area curves and categorical ratings as the best overall working choice among the candidates examined. This decision balances the research target, ordinal rating interpretation, residual evidence (especially the duplex improvement), AIC's complexity penalty, and the sensitivity findings. It does not assert optimal prediction or satisfactory assumptions everywhere.
+
+We retain basement and garage because their joint removal substantially worsens fit; retain age despite its VIF because it is part of the adjustment question; and retain the complete-case sample because diagnostic flags do not establish recording errors. The singleton deletion leaves the shared estimates unchanged. The normal-sale townhouse is retained, but its unstable local contrast is explicitly qualified. We retain grouped type-specific curvature rather than impose the shared shape that left a duplex U pattern, while acknowledging that neither the grouped test nor AIC establishes a reliable quadratic curve for every small group. The comparison set does not exhaust all possible models.
+
+Log remains a deliberate interpretation tradeoff: positive powers are preferred by Box-Cox, yet their diagnostics also remain imperfect and they change the response-scale interpretation. The final results therefore use nominal exploratory inference. Section 5 collects the unresolved normality, variance, functional-form, independence, complexity and validation limitations and their consequences.
+
+```{r select-final-model}
+final <- candidate
+```
+
+# 4. Final model and results
+
+After the diagnostic, sensitivity and complexity comparisons in Section 3, we select the following model for the main analysis. It has 67 coefficients and 2,861 residual degrees of freedom. Reference categories are detached homes, North Ames, 2006, quality 5 and condition 5. The selection rationale is complete before the research-question test below; the model retains the limitations summarized in Section 5.
+
+```{r display-formula}
+formula(final)
+```
+
+## Do types share one area curve?
+
+The null sets all four linear and four quadratic area-by-type interactions to zero, while allowing different price levels by type. The common-curve comparison model was fitted and diagnosed in Section 3 (Figure 15). This eight-degree-of-freedom test answers the research question; its small p-value was not used to choose the response transformation or to rank specifications.
+
+```{r primary-test}
+primary_test <- anova(common_area, final)
+```
+
+```{r table-primary}
+report_table(primary_test, digits = 4,
+             caption = "Primary joint test of eight area-by-type interactions", number = 21)
+```
+
+Table 21 gives **F(8, 2861) = `r round(primary_test$F[2], 2)`**, nominal **p = `r format(primary_test$"Pr(>F)"[2], scientific = TRUE, digits = 3)`**. The data support different adjusted area-price curves under this working specification. This does not prove every pair differs, establish causality or eliminate diagnostic concerns.
+
+\newpage
+
+## Interpret the adjusted percentage differences
+
+The size-specific contrast calculation defined in Section 3 converts a difference in fitted log prices to a geometric-mean percentage difference, 100[exp(difference) - 1]. The following estimates describe otherwise comparable recorded sales, not the effect of enlarging a particular home.
+
+```{r table-contrasts}
+report_table(area_results[c("Building", "From_sqft", "To_sqft", "Percent", "LowerPercent", "UpperPercent")], digits = 2,
+             caption = "Adjusted geometric-mean percentage differences and pointwise 95 percent intervals", number = 22)
+```
+
+Table 22 answers the question at two specified sizes. Detached homes have a 4.18% contrast at 1,200-1,300 sq ft and 3.45% at 1,500-1,600. Duplexes have -0.56% (interval includes zero) and 0.79%, respectively. Thus a single constant slope would be misleading. The intervals are pointwise and nominal, not simultaneous intervals or prediction intervals for individual homes. Refer back to Table 3 for sparse local support.
+
+```{r fig-contrasts, fig.cap=if (knitr::is_latex_output()) "Adjusted price contrasts for 1,500 to 1,600 sq ft; pointwise nominal 95 percent intervals." else "Figure 20: Adjusted price contrasts for 1,500 to 1,600 sq ft; pointwise nominal 95 percent intervals.", fig.height=3.7, fig.pos="H"}
+at_1500 <- subset(area_results, From_sqft == 1500)
+positions <- seq_len(nrow(at_1500))
+par(mar = c(5, 7, 2, 1))
+plot(at_1500$Percent, positions, yaxt = "n", pch = 19,
+     xlim = range(0, at_1500$LowerPercent, at_1500$UpperPercent),
+     xlab = "Adjusted geometric-mean price difference (%)", ylab = "")
+axis(2, at = positions, labels = at_1500$Building, las = 1)
+segments(at_1500$LowerPercent, positions, at_1500$UpperPercent, positions)
+abline(v = 0, lty = 2)
+```
+
+Figure 20 is the main interpretation figure. Detached homes have a narrow interval because that group is much larger. Separate positive intervals do not establish differences between types; the next calculation compares them directly. Exponentiated fits are not arithmetic-mean dollar prices, and none of these contrasts estimates the return from enlarging a particular home.
+
+```{r type-differences}
+type_differences <- data.frame()
+for (type in levels(cc$Building)[-1]) {
+  for (start in c(1200, 1500)) {
+    difference <- area_weights(final, type, start) -
+      area_weights(final, "1Fam", start)
+    type_differences <- rbind(type_differences, data.frame(
+      Type = type, From = start, To = start + 100,
+      contrast_interval(final, difference)))
+  }
+}
+```
+
+```{r table-differences}
+report_table(type_differences[c("Type", "From", "To", "Percent", "LowerPercent", "UpperPercent")], digits = 2,
+             caption = "Type versus detached: percentage changes in the ratio of area-related price ratios", number = 23)
+```
+
+In Table 23, negative means a smaller area-related price ratio than detached homes. At 1,500-1,600 sq ft, the end-unit townhouse interval includes zero; the other three are nominally below detached homes. The duplex value of about -2.58% is a **ratio-of-ratios** comparison, not the subtraction of the two percentages in Table 22. These comparisons are exploratory and not multiplicity-adjusted.
+
+# 5. Conclusions, limitations and improvements
+
+**Technical answer.** Table 21 supports heterogeneous adjusted area-price curves in this exploratory working model. Table 22 gives size-specific geometric-mean percentage contrasts. Table 14 and Table 16 retain the global finding, while Table 17 and Table 18 demonstrate uncertainty in individual magnitudes.
+
+**Plain-language answer.** In historical Ames sales, living area was not associated with the same relative price difference for every kind of home. Around 1,500 sq ft, the working model estimates about 3.45% higher prices for detached homes versus 0.79% for duplexes when comparing otherwise similar homes differing by 100 sq ft (Figure 20). These are associations, not estimated gains from building an addition. The difference depends on starting size, and unusual observations and sparse groups limit precision.
+
+## Remaining limitations and their consequences
+
+**Assumptions not adequately corrected.** Normal Q-Q tails remain far from the reference line after log and positive-power transformations. Unequal residual variance and large-area curvature also remain (Figures 9-13). We therefore do not claim normal errors, constant variance or a fully correct mean structure. Conventional F-test p-values and t-based intervals may be miscalibrated; a large total sample does not remove the sparse-group and leverage problems. Flat-looking time residuals cannot establish independence, and spatial or shared market dependence has not been resolved. These are unresolved limitations, not reasons to describe the chosen model as assumption-valid.
+
+**Complexity, selection and stability.** The final model has 67 coefficients for 2,928 records, but that overall ratio conceals very sparse neighborhoods, ratings and dwelling groups. AIC penalizes parameter count, yet is still based on the same data and working likelihood: it does not rule out overfitting. We selected transformations and specifications after examining these data, so the nominal intervals ignore selection uncertainty and are not simultaneous. The interior-townhouse contrast changes sign when one influential sale is omitted, and the duplex contrast changes materially across specifications. The broad interaction evidence is more stable than individual magnitudes; neither the townhouse percentage nor any extrapolated curve should be treated as a dependable valuation rule.
+
+**Transformation and scope.** Box-Cox favors positive powers and excludes log from both approximate profile intervals. We retain log for the relative-price estimand and its practical interpretation, not because it optimizes that profile or eliminates violations. Thus the selected model is a defended compromise among examined candidates, not an established universal optimum.
+
+These historical recorded sales do not establish causal renovation returns or current valuations. Missingness and assessor measurement errors remain possible, and local support on all adjustment variables is not guaranteed. Neighborhood coefficients may reflect unmeasured amenities and social patterns and must not be interpreted as intrinsic worth of residents or causal neighborhood effects.
+
+**Ethics and data use.** Public administrative provenance does not demonstrate homeowner consent for every secondary use. PID can support linkage, so identifiable audit tables should remain internal and public-facing figures should show aggregate findings. The package preserves attribution, does not look up residents, and makes exclusions and modeling discretion visible. It neither invents team contributions nor conceals the AI assistance. Dataset eligibility was already flagged in Part 1 because the handout both discouraged educational datasets and listed Ames; no instructor resolution was found and the team should resolve that existing ambiguity.
+
+**Validation and improvements.** Module 10 validation materials were not supplied. Module 9 explicitly defers validation to that module, so no train/test split or cross-validation procedure is introduced. Residual assessment and case-deletion sensitivity are internal checks, not evidence of transportability or out-of-sample performance. Since the objective is inference rather than prediction, automatically discarding part of the sample would also reduce information in the smallest groups. Future work should verify questionable transaction definitions through appropriate authorized data documentation, obtain fuller spatial/transaction information, and evaluate a frozen model on comparable new data once course-supported validation guidance is available. More observations in small dwelling groups would help distinguish curve shape from unusual sales. Robust variance or spatial methods may be useful in later coursework, but are not implemented here.
+
+**Relation to prior literature.** The positive condition/quality associations and negative adjusted age coefficient broadly agree with the motivations summarized in Part 1. The remaining variance problems and sensitivity to functional form reinforce the warning from Goodman and Thibodeau that a simple age-price model can be inadequate. Neighborhood adjustment addresses part of the location issue raised by Fik et al., but does not reproduce their spatial interaction analysis. None of these papers establishes the present dwelling-type result; their populations, scales, controls and research questions differ. Full-text verification and careful wording of this comparison remain team review tasks.
+
+# References
+
+- De Cock, D. (2011). Ames, Iowa: Alternative to the Boston housing data as an end of semester regression project. *Journal of Statistics Education, 19*(3). [Article](https://doi.org/10.1080/10691898.2011.11889627). [Original data](https://jse.amstat.org/v19n3/decock/AmesHousing.txt) and [codebook](https://jse.amstat.org/v19n3/decock/DataDocumentation.txt). Local original copies were the analysis inputs.
+- Fik, T. J., Ling, D. C., & Mulligan, G. F. (2003). Modeling spatial variation in housing prices: A variable interaction approach. *Real Estate Economics, 31*(4), 623-646. [Publisher record and abstract](https://doi.org/10.1046/j.1080-8620.2003.00079.x).
+- Goodman, A. C., & Thibodeau, T. G. (1995). Age-related heteroskedasticity in hedonic house price equations. *Journal of Housing Research, 6*(1), 25-42. [Article record](https://www.jstor.org/stable/24825889). Summary inherited from Part 1; full-text team check pending.
+- Mathur, S. (2019). House price impacts of construction quality and level of maintenance on a regional housing market: Evidence from King County, Washington. *Housing and Society, 46*(2), 57-80. [Article](https://doi.org/10.1080/08882746.2019.1601928). Summary inherited from Part 1; full-text team check pending.
+- Dong, G. (2026). *STA302H1 Modules 1-9 course slides*, and *STA302 Ethics Module 1 Slides*. Supplied course materials. Exact method pages appear in `course_methods.md`.
+
+# Appendix A. Full coefficients and their interpretation
+
+The main interpretation uses contrasts (Table 22), rather than isolated area coefficients. In Table 24, the dwelling main effects compare price levels at 1,500 sq ft; interaction terms change the area curve. Quality and condition are relative to level 5, neighborhood to North Ames and year to 2006. The intercept represents an unrealistic combination of zero numerical controls and reference categories, not a typical home. All intervals are pointwise and nominal.
+
+```{r coefficient-table}
+coefficient_summary <- coef(summary(final))
+coefficient_intervals <- confint(final)
+coefficients <- data.frame(
+  Term = rownames(coefficient_summary), Estimate = coefficient_summary[, 1],
+  SE = coefficient_summary[, 2], Lower = coefficient_intervals[, 1],
+  Upper = coefficient_intervals[, 2], P = coefficient_summary[, 4])
+```
+
+```{r table-coefficients}
+report_table(coefficients, digits = 5,
+             caption = "Full final-model coefficients on the natural-log-price scale", number = 24)
+```
+
+A printed p-value of zero reflects numerical rounding. A small neighborhood p-value is not evidence of a causal neighborhood effect; the singleton and two-record categories are particularly fragile. Year intervals containing zero do not prove that the housing market did not change.
+
+# Appendix B. Course method reference map
+
+Physical PDF page numbers, counted from 1; the listed pages also carry the matching printed slide numbers. Source PDFs remain in `../../../Slides`. Local text extractions in `source_text/` aid searching and are not replacements for diagrams. The influence cutoff slide and rubric were also rendered and visually checked.
+
+| Topic | Slide filename and pages | Application and status |
+|---|---|---|
+| Multiple regression, indicators, conditional interpretation | `Module 2 Slides-2.pdf`, pp. 17-26, 47-62 | Required foundation. Five dwelling categories, neighborhood, year, quality and condition factors; treatment coding. |
+| Interaction | `Module 2 Slides-2.pdf`, pp. 56-62 | Required for the question. Type-specific linear and quadratic area terms; retain main effects. |
+| Assumptions and their consequences | `Module 3 Slides-1 (1).pdf`, pp. 13-17 | Required. Linearity/mean-zero errors, uncorrelated errors, constant variance, normal errors. |
+| Diagnostic plots | `Module 3 Slides-1 (1).pdf`, pp. 19-28, 33-35 | Required. Residuals against fitted values, predictors and time; Q-Q plots. Bands from discrete predictors alone are not violations. |
+| Additional MLR conditions | `Module 3 Slides-1 (1).pdf`, pp. 40-47 | Required course diagnostic framing. Response versus fitted and predictor pairs; complex predictor relationships limit attribution of residual patterns to one cause. |
+| Log and power transformations | `Module 4 Slides-1 (1).pdf`, pp. 9-16, 33-34, 48-50 | Required attempt to address observed violations. Log is interpretable, but does not eliminate violations. |
+| Box-Cox | `Module 4 Slides-1 (1).pdf`, pp. 17-24, 30-32 | Planned, evaluated. MASS profile, then simple powers. Log falls outside the fitted profile interval; positive powers are examined. Not used as proof of normality. |
+| Polynomial terms and hierarchy | `Module 3 Slides-1 (1).pdf`, pp. 15, 22; `Module 7 Slides-1.pdf`, p. 31 | Purposeful functional-form extension. Linear area and dwelling main effects retained alongside squares and interactions. |
+| Coefficient uncertainty and linear combinations | `Module 5 Slides-1.pdf`, pp. 13-23, 35-39 | Required. t intervals from the full coefficient covariance matrix. Contrasts are differences of design rows; their covariance follows the taught linear-transformation formula. Pointwise, not simultaneous, intervals. |
+| Partial F-test | `Module 6 Slides-2.pdf`, pp. 37-42, 48-52 | Required primary hypothesis; also focused comparisons. Code checks identical records, response and nested design spaces. All p-values conditional on imperfect assumptions and model choices. |
+| Multicollinearity | `Module 7 Slides-1.pdf`, pp. 25-31, 33-43 | Required. Pairwise correlations, rank check, and VIF for numerical columns conditional on all other design columns. Course flag is VIF > 5. No untaught generalized VIF. |
+| Leverage and outliers | `Module 8 Slides-1.pdf`, pp. 11-16, 19-24, 47 | Required. With k = number of fitted coefficients including intercept: h > 2k/n, abs(standardized residual) > 4 for these large samples. |
+| Influence | `Module 8 Slides-1.pdf`, pp. 35-47, 57, 62-64 | Required all three measures: Cook D > median F(k,n-k), abs(DFFITS) > 2 sqrt(k/n), abs(DFBETAS) > 2/sqrt(n). These are review flags, not deletion rules. |
+| Manual versus automated selection | `Module 9 Slides-3.pdf`, pp. 3-6, 20-35, 42-49 | Required rationale. Manual sequence preserves scientific targets and hierarchy. All-subsets, forward, backward and stepwise methods are available but not applied. |
+| AIC, adjusted R-squared | `Module 9 Slides-3.pdf`, pp. 8-19; `Module 7 Slides-1.pdf`, pp. 3-15 | Optional descriptive evidence within the same response/sample only. No raw/log ranking by RSE, R-squared or unadjusted AIC. |
+| Validation | `Module 8 Slides-1.pdf`, p. 44; `Module 9 Slides-3.pdf`, p. 52 | Mentioned but detailed procedures deferred to Module 10, which is absent. No train/test split, bootstrap, or cross-validation imposed. Case-deletion sensitivity is not external validation. |
+| Remedies outside supplied scope | `Module 8 Slides-1.pdf`, p. 62 | Robust regression and weighted least squares explicitly deferred to later courses. No robust standard errors, spatial model, imputation, or untaught diagnostic test substituted. |
+| Data ethics | `STA302 Ethics Module 1 Slides-1.pdf`, pp. 6-11 | Provenance and metadata, trustworthiness versus ethical use, privacy, consent and ownership. |
+| AI use | `Module 1 Slides-3.pdf`, p. 25 | Material team review issue: the slide restricts GenAI use and says it cannot produce analyses/written work meant for grades. This package is labelled AI-assisted; team review alone does not establish compliance. |
+
+No supplied slide set beyond Module 9 was found. The method map distinguishes assessment requirements from optional tools; coverage in slides does not mandate using every method.
+
+# Appendix C. Model decisions and team review
+
+AI-assisted starting draft. Decisions below are recommendations implemented reproducibly, not evidence of team approval. No feedback was found among project files; the proposal PDF contained no non-link annotations. Existing Part 1 contribution statements were not copied as Part 2 contributions.
+
+| Change / issue | Reason and evidence | Retention / effect on research answer |
+|---|---|---|
+| Original complete-case sample | Verify original txt/CSV, unique PID/Order, missingness and saved coefficients | Retain n=2,928; two missing values excluded with stable identifiers. Baseline F=9.20 reproduced. |
+| Log price | Raw funnel and long tails; planned transformation | Retain as interpretable relative-price working scale. Initial log interaction p=0.000434. Does not cure all violations. |
+| Box-Cox and positive powers | Baseline power 0.25; final 0.15; log excluded from profile intervals | Evaluate .25 and .15 response powers, save diagnostic figures and joint tests. Do not claim log is Box-Cox supported. Choosing log for interpretation is a team-review tradeoff. |
+| Centered area square | Residual form and planned candidate; nominal F=263.98 | Retain linear term and square. Contrasts become size-dependent. |
+| Condition | Literature motivation and planned addition; nominal F=645.13 | Retain. Numeric version is intermediate. |
+| Quality as factor | Ordinal codebook; equal increments restrictive; 8-df F=18.12 | Retain ten levels, reference 5. Sparse levels remain a limitation. Type result persists. |
+| Condition as factor | Same ordinal concern; 7-df F=4.02 | Retain nine observed levels, reference 5. Modest improvement and extra parameters acknowledged. |
+| Type-specific area squares | Common-curvature residual U-shape for duplexes; 4-df F=16.74 | Retain; primary test now jointly tests 8 terms. Duplex estimate at 1,500 changes from 2.15% to 0.79%; a material specification sensitivity. |
+| Drop basement and garage jointly | Planned simplification; 2-df F=221.76 | Reject removal as working choice; keep both planned controls. `drop_controls_area_contrasts.csv` records impact. |
+| Primary interaction | Research target, not a search criterion | Keep both linear and quadratic interactions; F=12.15, nominal p=3.27e-17. |
+| Three large partial sales | Codebook plus raw sale codes, not just residual ranks | Keep in primary; exclude only these three in labelled sensitivity. Qualitative answer persists, numerical shape moves. Do not exclude all Partial records. |
+| Two other homes >4,000 sq ft | Codebook distinguishes appropriately priced unusual homes | Keep, despite broad pedagogical suggestion to drop all five. Research target includes unusual valid homes. |
+| Negative age | Sale before recorded construction year; same PID as one partial sale | Keep recorded value; exclusion and age=0 scenario separately tested. No verified correction available. |
+| Landmrk singleton | h=1; no residual information | Keep separate category; standardized/deletion diagnostics NA. Deleting it plus unused category does not change shared coefficients. No pooling. |
+| GrnHill two records | Very sparse neighborhood estimate | Keep; separate exclusion sensitivity leaves broad answer unchanged. No neighborhood claim. |
+| Large interior townhouse | Normal-sale code; largest Cook D, exceeds course cutoff | Keep; deleting it changes the local interior-townhouse estimate from +1.97% to -0.93% with CI spanning zero. The global test persists but this local result is unstable. No evidence of invalidity. |
+| Multicollinearity | Age VIF=6.19 > 5, full rank | Keep adjustment target; avoid strong isolated age interpretation. No automatic deletion. |
+| Complexity comparison | Same-response AIC for nine candidates, including simpler ratings with identical type-specific curves | Retain 67-coefficient candidate after fit penalty and diagnostic review. Sparse-group instability and lack of external validation remain; AIC does not rule out overfitting. |
+| Automated selection | Available but ignores scientific target unless constrained | Not used; manual path is limited and logged. Both approaches have selection uncertainty. |
+| Validation | Module 10 not supplied; internal checks available | No unsupported CV/split; sensitivity is not external validation. |
+
+## Diagnostic assessment order and remaining concerns
+
+1. Examine provenance, missingness, units, distributions, response-versus-fitted and predictor pairs.
+2. Reproduce baseline and inspect residuals and all influence measures.
+3. Apply purposeful transformations/functional-form changes and inspect each refit, including the reduced common-curve and dropped-control models, before interpreting tests.
+4. Treat nested comparisons as exploratory supporting evidence because no candidate achieves all assumptions.
+5. Inspect candidate VIFs, all three influence measures, group/time plots, sensitivity estimates and same-response AIC comparisons. Select the final specification only after these checks; then report its research-question test and contrasts. No robust-SE or spatial workaround is substituted for course methods.
+
+The candidate diagnostics were examined during development; their generation order is preserved in the R code. The final report provides a reader-facing order, not a claim of a preregistered selection protocol. The common-curve model is misspecified under the observed alternative, and the full model still has residual issues: neither permits unqualified textbook inference.
+
+## Focused decisions for the team
+
+- **Use of this draft:** Module 1 p.25 disallows AI production of graded analysis/writing. Determine permissible use of this package before incorporating it; disclose assistance accurately. Do not treat this document as evidence of permission.
+- **Estimand:** Accept a relative geometric-mean price question with nonlinear, size-specific contrasts, or retain the original arithmetic-mean-dollar question? They are different estimands. If changing back, raw-price problems must be addressed transparently.
+- **Sample:** Keep all complete historical transactions primary, as done here, or explicitly target sales excluding the three codebook-flagged incomplete homes? Choose from subject-matter meaning, not which p-value is smallest.
+- **Transformation tradeoff:** Is the interpretability of log price worth retaining despite Box-Cox favoring a positive power? Compare the final, quarter-power and profile-power plots. Neither has clean tails; do not call the issue solved.
+- **Curve complexity:** The duplex result changes materially when quadratic terms vary by type. Check the by-type residual plots and `common_curvature_contrasts.csv`. Do not report a universal constant slope or overinterpret the sparse two-family group.
+- **Influential townhouse:** Review the original recorded attributes and deletion contrasts for the largest-Cook case. Is there independent evidence of error? A high diagnostic alone is insufficient for exclusion.
+- **Quality/condition coding:** Review sparse low ratings and whether categorical adjustment is an acceptable precision/interpretation tradeoff. Do not pool levels just to improve a test result.
+- **Evidence still missing:** Obtain actual instructor feedback, any later Module 10 materials, resolution of the Part 1 Ames-eligibility ambiguity, and full text of Mathur and Goodman before final wording.
+- **Communication:** Keep the assumption qualifications next to the test and intervals. The main inference is exploratory and associational; a small nominal p-value does not resolve sampling, spatial or specification uncertainty.
+- **Later work:** Independently allocate and record real contributions; design the poster, rehearse and record, check OneDrive access, choose competition participation and submit. None of those tasks is completed here.
+
+# Appendix D. Requirements checklist
+
+Starting draft for team review; this is not a completed poster or submission. References below are to physical pages of `../STA302 Project Part 2-1.pdf`.
+
+| Requirement | Handout / rubric | Evidence | Status |
+|---|---|---|---|
+| Research question, motivation, why regression | pp. 3-4, 8-9 | `content_draft.md`, opening sections | Draft complete |
+| Data source, collection, suitability, reliability | pp. 4, 8 | Draft provenance; `audit/`, original codebook, source links | Draft complete; no claim of independent municipal verification |
+| Review Part 1 and feedback | pp. 4-5 | Named-coefficient baseline reproduction; PID audit; `decision_review_log.md` | Reproduced; no feedback file or non-link proposal PDF annotations found |
+| Course methods only | p. 2 | `course_methods.md` | Mapped; Module 10 absent |
+| Assumption checks before comparisons and after changes | pp. 1-2, 9 | Candidate plots, final diagnostic figures, interpretation in draft | Complete with persistent violations explicitly reported |
+| Defend transformation | p. 1, p. 9 | Box-Cox profiles, raw/log/power plots, decision log | Complete; log not claimed optimal or fully corrected |
+| Defend model and variable selection | pp. 2, 4, 9 | Candidate tests, manual-selection rationale, common-curvature comparison | Draft complete |
+| Multicollinearity | p. 2, p. 9 | `final_numeric_vif.csv`, correlations, rank checks | Complete; age VIF issue retained transparently |
+| Problematic observations | p. 2, p. 9 | PID-level diagnostics, all DFBETAS, original-record audit, sensitivity results | Complete; singleton diagnostics explicitly NA |
+| Joint hypothesis and concrete answer | pp. 2, 4, 8-9 | Eight-df test, size-specific contrasts and type differences with CIs | Complete, qualified inference |
+| Literature comparison | pp. 3-4, 9 | Draft literature comparison and references | Draft complete; full-text checks of two papers remain team tasks |
+| Limitations, ethics, future improvements | pp. 2, 4, 8-10 | Draft and focused review log | Complete as draft |
+| Clear labels, plots, captions | pp. 4, 8 | Figures embedded beside their discussion | Analytical figures complete; poster choices deferred |
+| Reproducible Rmd with all code | p. 6 | `analysis.Rmd`, input hash and session information | Native PDF knitting tested; see README |
+| Original and analysis CSV data | p. 7 | Original data unchanged; `audit/all_records.csv`, `complete_cases.csv` | Local files ready for team review; upload deferred |
+| Poster PDF, standalone message | pp. 3-5, 8 | Written content and evidence prepared | Later team task, intentionally not created |
+| Poster dimensions and anonymity | p. 5 | At most A1 (841 x 594 mm), at most 10 MB; no student names, group, university or course identifiers | Later design check |
+| Recorded presentation | pp. 5-6, 9-10 | Plain-language draft, technical evidence | Later team task; at most 8 minutes, normal pace, all members visible and participating equally |
+| Actual contributions | p. 10 | No new team contributions claimed | Team must record actual work |
+| Submission and links | pp. 6-7 | Poster PDF plus Rmd; three separately labelled comments for video, CSV data, competition decision | Later team task; one teammate submits; UofT OneDrive permissions must be checked |
+| Deadline | p. 1 | December 3, 2026, 11:59 p.m. Toronto; NQA December 6, 11:59 p.m., separate dropbox | Team scheduling task; handout warns against submitting before original deadline if using NQA |
+
+The rubric assigns 27 total points across poster and presentation criteria (pp. 8-10). Analytical evidence is prepared here; presentation/design criteria cannot be marked completed by a written draft. No graded submission, poster or recording is completed by this report. A separate draft slide deck was subsequently created for review; it does not replace the required poster.
+
+# Appendix E. Save outputs and verify this run
+
+The report above uses freshly fitted objects in memory. Saving CSV or RDS files is a separate convenience. The exporter below retains the Windows file-lock protection from the previous version. If an RDS destination is locked, it records a new readable snapshot instead. The implementation is hidden in the PDF to keep the statistical discussion readable, but remains in this Rmd. Current worksheet outputs go in `worksheet_outputs/`, separate from the archived batch-analysis exports.
+
+```{r export-safeguards, echo=FALSE}
+write.csv <- function(x, file, ..., row.names=FALSE) {
+  parent <- dirname(file)
+  if (!dir.exists(parent) && !dir.create(parent, recursive=TRUE))
+    stop("Cannot create output directory: ", normalizePath(parent, mustWork=FALSE))
+  destination <- file.path(normalizePath(parent, winslash="/", mustWork=TRUE), basename(file))
+  staged <- tempfile(pattern=".csv-stage-", tmpdir=parent, fileext=".csv")
+  on.exit(unlink(staged), add=TRUE)
+  utils::write.csv(x, staged, ..., row.names=row.names)
+  last_error <- "destination could not be replaced"
+  for (attempt in seq_len(6L)) {
+    # rename is atomic when supported and avoids truncating an existing CSV.
+    ok <- suppressWarnings(file.rename(staged, destination))
+    if (isTRUE(ok)) return(invisible(destination))
+    # Some Windows filesystems cannot rename over an existing destination.
+    ok <- tryCatch(suppressWarnings(file.copy(staged, destination, overwrite=TRUE)),
+                   error=function(e) {last_error <<- conditionMessage(e); FALSE})
+    if (isTRUE(ok)) {
+      if (!identical(unname(tools::md5sum(staged)), unname(tools::md5sum(destination))))
+        stop("CSV verification failed after writing: ", destination)
+      return(invisible(destination))
+    }
+    if (attempt < 6L) Sys.sleep(0.5 * attempt)
+  }
+  stop("Cannot replace CSV: ", destination,
+       "\nClose this file in Excel or other viewers, stop concurrent renders, and check folder permissions.",
+       "\nNo stale table was accepted. Details: ", last_error, call.=FALSE)
+}
+
+
+# Model snapshots are auxiliary exports; the report uses models in memory.
+# Keep a new, verified snapshot if a viewer/scanner prevents replacing a cache.
+model_export_log <- data.frame(Requested=character(), Saved=character(), Status=character())
+save_model <- function(object, file) {
+  parent <- dirname(file)
+  if (!dir.exists(parent) && !dir.create(parent, recursive=TRUE))
+    stop("Cannot create model output directory: ", normalizePath(parent, mustWork=FALSE))
+  parent <- normalizePath(parent, winslash="/", mustWork=TRUE)
+  destination <- file.path(parent, basename(file))
+  staged <- tempfile(pattern=paste0(tools::file_path_sans_ext(basename(file)), "-run-"),
+                     tmpdir=parent, fileext=".rds")
+  saved <- FALSE
+  on.exit(if (!saved) unlink(staged), add=TRUE)
+  base::saveRDS(object, staged)
+  invisible(readRDS(staged)) # Verify serialization and decompression before publishing.
+  for (attempt in seq_len(6L)) {
+    if (isTRUE(suppressWarnings(file.rename(staged, destination)))) {
+      saved <- TRUE
+      model_export_log <<- rbind(model_export_log,
+        data.frame(Requested=destination, Saved=destination, Status="replaced"))
+      return(invisible(destination))
+    }
+    if (attempt < 6L) Sys.sleep(0.3)
+  }
+  # The staged file is already a complete, readable model. Preserve it instead
+  # of truncating the locked old snapshot or discarding this run's results.
+  saved <- TRUE
+  model_export_log <<- rbind(model_export_log,
+    data.frame(Requested=destination, Saved=staged, Status="versioned_fallback"))
+  message("Could not replace model snapshot: ", destination,
+          "\nSaved this run's model to: ", staged,
+          "\nSee audit/model_export_manifest.csv. Report calculations use the current in-memory fit.")
+  invisible(staged)
+}
+```
+
+```{r export-results}
+dir.create("worksheet_outputs", showWarnings = FALSE)
+write.csv(area_results, "worksheet_outputs/area_contrasts.csv")
+write.csv(type_differences, "worksheet_outputs/type_differences.csv")
+write.csv(sensitivity_tests, "worksheet_outputs/sensitivity_tests.csv")
+write.csv(sensitivity_contrasts, "worksheet_outputs/sensitivity_contrasts.csv")
+write.csv(deletion_tests, "worksheet_outputs/deletion_tests.csv")
+write.csv(deletion_contrasts, "worksheet_outputs/deletion_contrasts.csv")
+write.csv(specification_results, "worksheet_outputs/specification_contrasts.csv")
+write.csv(coefficients, "worksheet_outputs/coefficients.csv")
+write.csv(diagnostic_counts, "worksheet_outputs/diagnostic_counts.csv")
+write.csv(vifs, "worksheet_outputs/vifs.csv")
+write.csv(complexity_comparison, "worksheet_outputs/model_complexity.csv")
+save_model(final, "worksheet_outputs/final.rds")
+save_model(sensitivity_models, "worksheet_outputs/sensitivity.rds")
+write.csv(model_export_log, "worksheet_outputs/model_export_manifest.csv")
+```
+
+The following checks guard against accidental numerical changes during the reorganization. They compare freshly calculated quantities with the previously verified results; the old CSVs are not needed. The complete input hash is also checked again.
+
+```{r verification}
+stopifnot(
+  nobs(final) == 2928, final$rank == 67,
+  complexity_comparison$Model[which.min(complexity_comparison$AIC)] ==
+    "Type curves, categorical ratings",
+  length(log_candidates) == 9,
+  abs(primary_test$F[2] - 12.1476480721338) < 1e-8,
+  primary_test$Df[2] == 8,
+  all(diagnostic_counts$Count == c(237, 21, 1, 155, 1405, 1)),
+  abs(subset(area_results, Building == "1Fam" & From_sqft == 1500)$Percent -
+        3.45) < .01,
+  abs(subset(area_results, Building == "Duplex" & From_sqft == 1500)$Percent -
+        .79) < .01,
+  identical(tools::md5sum(input), input_hash))
+cat("Reproduction, primary test, diagnostics and input-preservation checks passed.")
+```
+
+# Session information
+
+Software versions document reproducibility, not statistical validity.
+
+```{r session-information}
+sessionInfo()
+```
+
