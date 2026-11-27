@@ -5,6 +5,21 @@ It interleaves explanations, short executable chunks, numbered tables, figures
 and interpretation. All analytical calculations start from the Part 1 originals;
 no saved table or model from Part 2 is required as an input.
 
+## Report structure
+
+The main report has five sections: data; model development; diagnostics, sensitivity
+and model selection; final model and results; and conclusions, limitations and
+improvements. Candidate models remain candidates until the diagnostic, sensitivity
+and complexity comparisons are complete. The final selection balances the question,
+residual evidence, parsimony and stability; it is not a claim that assumptions are
+fully satisfied or that overfitting has been ruled out.
+
+The same-sample, log-response AIC comparison includes two additional simpler-rating
+candidates with type-specific curves. It is exported to
+`worksheet_outputs/model_complexity.csv`. All 24 tables and 20 figures are numbered
+in reading order. Unresolved assumptions and selection/validation limitations are
+collected in the last main section.
+
 ## Render
 
 ```r
